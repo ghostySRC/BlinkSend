@@ -863,7 +863,7 @@
   function enqueueFiles(files) { enqueueEntries([...files].map(file => ({ file, relativePath:file.webkitRelativePath || '' }))); }
   function sendCapacityBlocked(limit,nextBytes=0){
     if(channel?.readyState!=='open')return true;
-    if(channel.bufferedAmount>limit)return true;
+    if(channel.bufferedAmount+Math.max(0,nextBytes)>limit)return true;
     return !!(active?.direction==='send'&&active.accepted&&active.remoteWindow>0&&
       (active.sent-(active.remoteReceived||0)+Math.max(0,nextBytes))>active.remoteWindow);
   }
@@ -885,6 +885,25 @@
   async function respectSendCapacity(limit,nextBytes=0){
     const wait=waitForSendCapacity(limit,nextBytes);
     if(wait)await wait;
+  }
+  async function sendBinaryPacket(packet,limit){
+    const bytes=packet?.byteLength||0;
+    const negotiated=Number(pc?.sctp?.maxMessageSize)||0;
+    if(negotiated&&bytes>negotiated)throw new Error('Packet exceeds negotiated SCTP size');
+    for(let attempt=0;attempt<24;attempt++){
+      if(channel?.readyState!=='open')throw new Error('Connection closed');
+      await respectSendCapacity(limit,bytes);
+      try{channel.send(packet);return;}
+      catch(error){
+        if(channel?.readyState!=='open')throw error;
+        const target=Math.max(512*1024,Math.floor(limit/2));
+        const deadline=performance.now()+250;
+        while(channel?.readyState==='open'&&channel.bufferedAmount>target&&performance.now()<deadline)
+          await new Promise(resolve=>setTimeout(resolve,5));
+        await new Promise(resolve=>setTimeout(resolve,5));
+      }
+    }
+    throw new Error('RTCDataChannel send queue remained full');
   }
   function sendFlowUpdate(state=active,force=false){
     if(!state||state.direction!=='receive'||channel?.readyState!=='open')return;
@@ -943,9 +962,9 @@
           let local=0,seq=firstSeq;
           while(local<view.byteLength&&seq<maxSeq){
             if(active?.id!==id||active.paused)return;
-            const len=Math.min(size,view.byteLength-local);await respectSendCapacity(active.highWater||tuning.highWater,len);
+            const len=Math.min(size,view.byteLength-local);
             const payload=view.subarray(local,local+len);
-            channel.send(BlinkTransfer.packChunk(seq,payload));
+            await sendBinaryPacket(BlinkTransfer.packChunk(seq,payload),active.highWater||tuning.highWater);
             active.rangeSeq=++seq;active.sent=Math.min(file.size,active.sent+len);local+=len;
           }
         }
@@ -961,8 +980,8 @@
         let local=0;
         while(local<view.byteLength){
           if(active?.id!==id||active.paused)return;
-          const seq=active.nextChunk,len=Math.min(size,view.byteLength-local);await respectSendCapacity(active.highWater||tuning.highWater,len);const payload=view.subarray(local,local+len);
-          channel.send(BlinkTransfer.packChunk(seq,payload));
+          const seq=active.nextChunk,len=Math.min(size,view.byteLength-local);const payload=view.subarray(local,local+len);
+          await sendBinaryPacket(BlinkTransfer.packChunk(seq,payload),active.highWater||tuning.highWater);
           active.sent+=len;active.nextChunk++;local+=len;
         }
       }
