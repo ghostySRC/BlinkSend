@@ -191,7 +191,7 @@
   $('theme-toggle').onclick = () => { theme = theme === 'dark' ? 'light' : 'dark'; saveSetting('blinksend-theme', theme); applyTheme(); };
   systemTheme.addEventListener?.('change', e => { if (!readSetting('blinksend-theme')) { theme = e.matches ? 'dark' : 'light'; applyTheme(); } });
   function updateSaveNote() {
-    els['save-note'].textContent = tr(!window.showSaveFilePicker && pending.size > maxMemoryFile ? 'largeUnsupported' : 'saveNote');
+    els['save-note'].textContent = tr(!window.showSaveFilePicker && !supportsOpfs && pending.size > maxMemoryFile ? 'largeUnsupported' : 'saveNote');
   }
   function renderTransfer() {
     els['queue-status'].textContent = tr('queue', { current: batchDone + 1, total: batchTotal, remaining: outgoing.length });
@@ -204,6 +204,7 @@
   }
   const chunkSize = 64 * 1024;
   const maxMemoryFile = 200 * 1024 * 1024;
+  const supportsOpfs = !!navigator.storage?.getDirectory;
   const format = bytes => bytes < 1024 ? `${bytes} B` : bytes < 1048576 ? `${(bytes / 1024).toFixed(1)} KB` : bytes < 1073741824 ? `${(bytes / 1048576).toFixed(1)} MB` : `${(bytes / 1073741824).toFixed(2)} GB`;
   let socket, pc, channel, pending, active, incomingQueue = Promise.resolve(), signalQueue = Promise.resolve(), connectTimer;
   let readyLabel = 'ready';
@@ -316,6 +317,7 @@
   function stopTransfer(message, notify = true, preserveQueue = false, vars = {}) {
     if (notify && active && channel?.readyState === 'open') channel.send(JSON.stringify({ type: 'cancel', id: active.id }));
     if (active?.writer) active.writer.abort().catch(() => {});
+    if (active?.opfs) active.opfs.root.removeEntry(active.opfs.tempName).catch(() => {});
     active = null; progressState = null;
     if (!preserveQueue) { outgoing = []; batchTotal = 0; batchDone = 0; }
     els['transfer-info'].hidden = true; els.file.value = '';
@@ -372,7 +374,7 @@
       pending = { id: msg.id, name: safeName, relativePath: safePath, size: msg.size };
       els['incoming-detail'].textContent = `${pending.relativePath || pending.name} · ${format(msg.size)}`;
       updateSaveNote();
-      els.accept.disabled = !window.showSaveFilePicker && msg.size > maxMemoryFile;
+      els.accept.disabled = !window.showSaveFilePicker && !supportsOpfs && msg.size > maxMemoryFile;
       els.incoming.hidden = false; els.accept.focus();
       status('incomingPrompt');
     }
@@ -383,7 +385,9 @@
       if (active.received !== active.size) { stopTransfer('incomplete'); return; }
       try {
         if (active.writer) await active.writer.close();
-        else { const url = URL.createObjectURL(new Blob(active.chunks)); const anchor = document.createElement('a'); anchor.href = url; anchor.download = active.name; document.body.append(anchor); anchor.click(); anchor.remove(); setTimeout(() => URL.revokeObjectURL(url), 60_000); }
+        if (active.opfs) {
+          const file = await active.opfs.handle.getFile(); const url = URL.createObjectURL(file); const anchor = document.createElement('a'); anchor.href = url; anchor.download = active.name; document.body.append(anchor); anchor.click(); anchor.remove(); setTimeout(() => URL.revokeObjectURL(url), 60_000); active.opfs.root.removeEntry(active.opfs.tempName).catch(() => {});
+        } else if (!active.writer) { const url = URL.createObjectURL(new Blob(active.chunks)); const anchor = document.createElement('a'); anchor.href = url; anchor.download = active.name; document.body.append(anchor); anchor.click(); anchor.remove(); setTimeout(() => URL.revokeObjectURL(url), 60_000); }
         channel.send(JSON.stringify({ type: 'saved', id: msg.id }));
         stopTransfer('received', false);
       } catch { stopTransfer('saveFailed'); }
@@ -409,14 +413,17 @@
   els.accept.onclick = async () => {
     if (!pending || active) return;
     const request = pending;
-    let writer;
+    let writer, opfs;
     if (window.showSaveFilePicker) {
       try { const handle = await showSaveFilePicker({ suggestedName: request.name }); writer = await handle.createWritable(); }
       catch (error) { if (error.name === 'AbortError') return; notice('saveLocationFailed'); return; }
+    } else if (supportsOpfs && request.size > maxMemoryFile) {
+      try { const root = await navigator.storage.getDirectory(); const tempName = `blinksend-${crypto.randomUUID()}.part`; const handle = await root.getFileHandle(tempName, { create: true }); writer = await handle.createWritable(); opfs = { root, handle, tempName }; }
+      catch { notice('saveLocationFailed'); return; }
     }
     if (pending?.id !== request.id) { writer?.abort(); return; }
     pending = null; els.incoming.hidden = true;
-    active = { ...request, direction: 'receive', received: 0, chunks: writer ? null : [], writer, started: Date.now() };
+    active = { ...request, direction: 'receive', received: 0, chunks: writer ? null : [], writer, opfs, started: Date.now() };
     showTransfer(request.name, request.size);
     channel.send(JSON.stringify({ type: 'accept', id: request.id }));
   };
