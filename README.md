@@ -85,7 +85,7 @@ BlinkSend can also be installed as a PWA on supporting browsers. No account is r
 - Send one file, several files, or choose an entire folder as a batch. On browsers with the File System Access API, BlinkSend recreates the folder tree automatically under one chosen destination. Dragging folders onto the drop area is also supported through modern File System handles, with a legacy directory-entry fallback where available.
 - Direct encrypted browser-to-browser transfer when the network allows it; optional TURN relay support for harder networks.
 - Peer verification code derived from the WebRTC DTLS fingerprints. Both devices must confirm the same six-digit code before sending is unlocked.
-- Incremental SHA-256 verification for every file. A transfer is only reported as verified after sender and receiver hashes match.
+- Incremental SHA-256 verification for every file. A transfer is only reported as verified after sender and receiver hashes match; the streaming hasher processes full blocks directly from transfer buffers to keep integrity checking off the throughput critical path as much as possible.
 - Transfer progress, average speed, cancellation, connection status, and clear errors when pairing fails.
 - Pending individual files are shown in a visible queue and can be reordered, removed, or cleared while another file is sending. New individual files can be appended mid-transfer, and the picker resets after every enqueue so the same file can be added again if wanted; folders start only when the current file queue is idle. Accepted folder batches lock their membership so sender and receiver stay consistent.
 - A verified sender session stays connected after completion and exposes **Send another**, so repeated transfers do not require pairing again.
