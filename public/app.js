@@ -418,14 +418,14 @@
   async function createOpfsWorkerBridge(handle,{truncate=false,resumeBytes=0}={}){
     if(!supportsOpfs||!window.Worker)return null;
     const worker=new Worker('/receive-worker.js');
-    let sequence=0,closed=false;
+    let sequence=0,closed=false,backend='';
     const pendingCalls=new Map();
     let readyResolve,readyReject;
     const ready=new Promise((resolve,reject)=>{readyResolve=resolve;readyReject=reject;});
     const failAll=error=>{for(const {reject} of pendingCalls.values())reject(error);pendingCalls.clear();readyReject?.(error);};
     worker.onmessage=event=>{
       const msg=event.data||{};
-      if(msg.type==='ready'){readyResolve?.(msg);readyResolve=readyReject=null;return;}
+      if(msg.type==='ready'){backend=typeof msg.backend==='string'?msg.backend:'';readyResolve?.(msg);readyResolve=readyReject=null;return;}
       if(msg.type==='error'){
         const error=new Error(msg.message||'OPFS worker failed');
         if(msg.id&&pendingCalls.has(msg.id)){pendingCalls.get(msg.id).reject(error);pendingCalls.delete(msg.id);}
@@ -443,6 +443,7 @@
         const id=String(++sequence);
         return new Promise((resolve,reject)=>{pendingCalls.set(id,{resolve,reject});worker.postMessage({type,id,...payload},transfer);});
       },
+      get backend(){return backend;},
       terminate(){if(closed)return;closed=true;worker.terminate();failAll(new Error('OPFS worker terminated'));}
     };
   }
@@ -494,8 +495,10 @@
     return state.hashPromise;
   }
   function isLikelyLan(){
-    return !connectionMetrics.relayed&&connectionMetrics.rttMs>0&&connectionMetrics.rttMs<25&&
-      connectionMetrics.localType==='host'&&connectionMetrics.remoteType==='host';
+    if(connectionMetrics.relayed)return false;
+    const hostPair=connectionMetrics.localType==='host'&&connectionMetrics.remoteType==='host';
+    const lowLatency=connectionMetrics.rttMs>0&&connectionMetrics.rttMs<=30;
+    return hostPair||lowLatency;
   }
   function retuneConnection(){
     tuning=BlinkProtocol.chooseTuning({
@@ -560,7 +563,8 @@
       ?`${format(active.flowWindow||tuning.receiveWindow)} window${active.receiveWriteBps?` · ${format(active.receiveWriteBps)}/s write`:''}`
       :format(active?.highWater||tuning.highWater);
     els['diag-reconnects'].textContent=String(reconnectCount);
-    els['diag-capabilities'].textContent=[window.showOpenFilePicker?'File picker':'Downloads',window.showDirectoryPicker?'Folders':'Folder fallback',supportsOpfs?'OPFS fast path':'No OPFS','serviceWorker' in navigator?'PWA':'No PWA',navigator.share?'Share':'No Share'].join(' · ');
+    const opfsLabel=active?.opfsWorker?.backend?('OPFS '+active.opfsWorker.backend+' worker'):(supportsOpfs?'OPFS available':'No OPFS');
+    els['diag-capabilities'].textContent=[window.showOpenFilePicker?'File picker':'Downloads',window.showDirectoryPicker?'Folders':'Folder fallback',opfsLabel,'serviceWorker' in navigator?'PWA':'No PWA',navigator.share?'Share':'No Share'].join(' · ');
   }
   function renderQueue(){const locked=!!outgoingBatch,count=outgoing.length,total=outgoing.reduce((n,e)=>n+(e.file?.size||e.size||0),0);els['queue-panel'].hidden=!count;els['queue-summary'].textContent=count?tr('queueSummary',{count,size:format(total)}):'';els['clear-queue'].disabled=locked||!count;els['clear-queue'].title=locked?tr('queueLocked'):'';els['queue-list'].innerHTML='';outgoing.forEach((entry,index)=>{const row=document.createElement('div');row.className='queue-item';const main=document.createElement('div');main.className='queue-item-main';const name=document.createElement('span');name.className='queue-item-name';name.textContent=entry.relativePath||entry.file?.name||entry.name||'File';const size=document.createElement('span');size.className='queue-item-size';size.textContent=format(entry.file?.size||entry.size||0);main.append(name,size);const actions=document.createElement('div');actions.className='queue-item-actions';for(const [symbol,title,delta] of [['↑',tr('moveUp'),-1],['↓',tr('moveDown'),1]]){const b=document.createElement('button');b.type='button';b.className='queue-icon-button';b.textContent=symbol;b.title=title;b.disabled=(delta<0&&index===0)||(delta>0&&index===outgoing.length-1);b.onclick=()=>{const next=index+delta;[outgoing[index],outgoing[next]]=[outgoing[next],outgoing[index]];renderQueue();};actions.append(b);}const remove=document.createElement('button');remove.type='button';remove.className='queue-icon-button';remove.textContent='×';remove.title=tr('remove');remove.disabled=locked;remove.onclick=()=>{outgoing.splice(index,1);batchTotal=Math.max(batchDone+(active?1:0)+outgoing.length,active?1:0);renderQueue();renderTransfer();};actions.append(remove);row.append(main,actions);els['queue-list'].append(row);});}
   async function renderHistory() {
@@ -895,7 +899,8 @@
       batchMs=Math.max(.01,performance.now()-started);
     }
     if(batchMs>0){
-      const adapted=BlinkProtocol.adaptReceiveWindow({current:state.flowWindow,previousBps:state.receiveWriteBps,batchBytes:total,batchMs});
+      const maxWindow=navigator.deviceMemory?64*1024*1024:32*1024*1024;
+      const adapted=BlinkProtocol.adaptReceiveWindow({current:state.flowWindow,previousBps:state.receiveWriteBps,batchBytes:total,batchMs,max:maxWindow});
       state.flowWindow=adapted.window;state.receiveWriteBps=adapted.throughputBps;
     }
     if(state===active){progress(state.received,state.size,state.started,'receiving');sendFlowUpdate(state);}
