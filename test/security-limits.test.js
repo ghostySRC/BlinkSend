@@ -12,3 +12,14 @@ test('resume ranges must be ordered, non-overlapping and bounded',async()=>{cons
 test('clipboard frames cannot force oversized allocations',async()=>{const s=await load();assert.equal(s.validTextStart({id:'x',parts:s.LIMITS.textParts+1,bytes:1}),false);const state={id:'x',parts:new Array(2)};assert.equal(s.validTextPart({id:'x',index:0,text:'ok'},state),true);assert.equal(s.validTextPart({id:'x',index:0,text:'a'.repeat(s.LIMITS.textPartBytes+1)},state),false);});
 test('control JSON has a hard byte ceiling',async()=>{const s=await load();assert.equal(s.controlJsonWithinLimit('{}'),true);assert.equal(s.controlJsonWithinLimit('x'.repeat(s.LIMITS.controlJsonBytes+1)),false);});
 test('fuzzed malformed requests never validate',async()=>{const s=await load();let seed=0x12345678;const rnd=()=>{seed=(seed*1664525+1013904223)>>>0;return seed;};for(let i=0;i<5000;i++){const msg={id:i%7?'id':'x'.repeat(100),name:i%11?'file.bin':null,size:(rnd()%2)?-(rnd()%1000):Number.MAX_SAFE_INTEGER,chunkSize:[0,1,16384,65536,131072][rnd()%5],relativePath:i%13?'ok/file':'../escape'};assert.equal(s.validFileRequest(msg),false);}});
+test('persisted resume metadata is validated before restore',async()=>{
+  const s=await load(),handle={};
+  const good={role:'receive',transferId:'id',handle,name:'a.bin',size:65536,relativePath:'',chunkSize:65536,received:0,nextChunk:0,receivedMap:new Uint8Array(1)};
+  assert.equal(s.validPersistedSession(good),true);
+  assert.equal(s.validPersistedSession({...good,size:Number.MAX_SAFE_INTEGER}),false);
+  assert.equal(s.validPersistedSession({...good,nextChunk:99}),false);
+  assert.equal(s.validPersistedSession({...good,receivedMap:new Uint8Array(999)}),false);
+  const send={role:'send',transferId:'id',handle,name:'a.bin',size:1,relativePath:'',chunkSize:65536,lastModified:123,batchEntries:[],batchDone:0};
+  assert.equal(s.validPersistedSession(send),true);
+  assert.equal(s.validPersistedSession({...send,batchEntries:Array(s.LIMITS.batchFiles+1).fill({name:'x',size:1,relativePath:''})}),false);
+});

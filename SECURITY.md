@@ -37,3 +37,5 @@ The receiving browser validates peer-controlled metadata before allocating chunk
 ## Verification boundary
 
 The data channel may exist before a user confirms the six-digit code, but BlinkSend does not treat that as an authorized transfer session. Before mutual verification, the control policy accepts only device hello, verification confirmation, cancellation, and matching resume metadata needed to preserve an already-existing interrupted transfer. New files, folders, clipboard data, benchmarks, completion messages, retries, and save acknowledgements are ignored until the peer is verified.
+
+Persisted reload-resume metadata is validated again before permissions, writers, chunk maps, or restored batch entries are used. Sender-side restore also compares the current source file size and modification timestamp with the saved session to avoid resuming against a changed file.

@@ -209,7 +209,7 @@ Security- and recovery-sensitive primitives are separated from the UI controller
 
 ## Reliability and resource limits
 
-BlinkSend treats the other browser as untrusted. Before allocating transfer state or creating destination structures, the client applies explicit limits to control-message size, file metadata, batch counts and bytes, path depth/length, text framing, resume ranges, queue length, and total chunk count. These limits are defined in `public/security.js` and covered by hostile-input tests. File/folder/text/benchmark initiation is also rejected until mutual peer verification completes; they are safety bounds rather than advertised performance targets.
+BlinkSend treats the other browser as untrusted. Before allocating transfer state or creating destination structures, the client applies explicit limits to control-message size, file metadata, batch counts and bytes, path depth/length, text framing, resume ranges, queue length, and total chunk count. These limits are defined in `public/security.js` and covered by hostile-input tests. File/folder/text/benchmark initiation is also rejected until mutual peer verification completes; persisted reload-resume metadata is revalidated before restore, and sender resume refuses a source file that changed size or modification time; they are safety bounds rather than advertised performance targets.
 
 ## Browser compatibility
 

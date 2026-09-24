@@ -616,7 +616,7 @@
   async function persistSendSession(entry) {
     if (!window.BlinkStore || !entry?.handle || !room || !active) return;
     const batchEntries = outgoingBatch?.entries?.filter(x => x.handle).map(x => ({ handle:x.handle, name:x.file?.name || x.name, size:x.file?.size ?? x.size, relativePath:x.relativePath })) || null;
-    try { await BlinkStore.put({ id:sessionKey(), room, role:'send', transferId:active.id, handle:entry.handle, name:active.file.name, size:active.file.size, relativePath:active.relativePath, chunkSize:active.chunkSize, batchId:outgoingBatch?.id || null, batchName:outgoingBatch?.name || null, batchEntries, batchDone }); } catch {}
+    try { await BlinkStore.put({ id:sessionKey(), room, role:'send', transferId:active.id, handle:entry.handle, name:active.file.name, size:active.file.size, lastModified:active.file.lastModified, relativePath:active.relativePath, chunkSize:active.chunkSize, batchId:outgoingBatch?.id || null, batchName:outgoingBatch?.name || null, batchEntries, batchDone }); } catch {}
   }
   async function persistReceiveSession() {
     if (!window.BlinkStore || !active?.persistentHandle || !room) return;
@@ -997,11 +997,11 @@
     } catch {}
   }
   async function restoreSession() {
-    const s=resumeSession; if (!s?.handle) { notice('resumeUnavailable'); return; }
+    const s=resumeSession; if (!BlinkSecurity.validPersistedSession(s)) { await clearPersistent(); resumeSession=null; els['resume-card'].hidden=true; notice('resumeUnavailable'); return; }
     const access = s.role === 'receive' ? 'readwrite' : 'read';
     try { if (!(await ensurePermission(s.handle, access))) { notice('resumePermission'); return; } } catch { notice('resumePermission'); return; }
     if (s.role === 'send') {
-      const file=await s.handle.getFile(); mode='send'; setRole('send');
+      const file=await s.handle.getFile(); if(file.size!==s.size||(s.lastModified!=null&&file.lastModified!==s.lastModified)){await clearPersistent();resumeSession=null;els['resume-card'].hidden=true;notice('resumeUnavailable');return;} mode='send'; setRole('send');
       outgoingBatch = s.batchId ? { id:s.batchId, name:s.batchName || 'Folder', entries:(s.batchEntries || []).map(x=>x) } : null;
       batchTotal = s.batchEntries?.length || 1; batchDone = s.batchDone || 0;
       if (s.batchEntries?.length) {

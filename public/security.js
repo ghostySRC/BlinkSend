@@ -39,5 +39,24 @@
   function validTextStart(msg){return !!msg&&validId(msg.id)&&Number.isSafeInteger(msg.parts)&&msg.parts>=1&&msg.parts<=LIMITS.textParts&&Number.isSafeInteger(msg.bytes)&&msg.bytes>=0&&msg.bytes<=LIMITS.textBytes;}
   function validTextPart(msg,state){return !!state&&!!msg&&msg.id===state.id&&Number.isSafeInteger(msg.index)&&msg.index>=0&&msg.index<state.parts.length&&typeof msg.text==='string'&&utf8(msg.text)<=LIMITS.textPartBytes;}
   function controlJsonWithinLimit(raw){return typeof raw==='string'&&utf8(raw)<=LIMITS.controlJsonBytes;}
-  window.BlinkSecurity={LIMITS,utf8,validId,safeName,safeRelativePath,chunkCount,validFileRequest,validBatchRequest,validRanges,validTextStart,validTextPart,controlJsonWithinLimit};
+  function validPersistedEntry(entry){
+    return !!entry&&typeof entry==='object'&&typeof entry.name==='string'&&entry.name.length<=LIMITS.fileNameChars&&Number.isSafeInteger(entry.size)&&entry.size>=0&&entry.size<=LIMITS.fileBytes&&safeRelativePath(entry.relativePath)!==null;
+  }
+  function validPersistedSession(s){
+    if(!s||typeof s!=='object'||!['send','receive'].includes(s.role)||!validId(s.transferId)||!validPersistedEntry(s)||!s.handle)return false;
+    const chunk=Number.isSafeInteger(s.chunkSize)?s.chunkSize:64*KiB,total=chunkCount(s.size,chunk);if(total>LIMITS.maxChunks)return false;
+    if(s.batchId!=null&&!validId(s.batchId))return false;if(s.batchName!=null&&(typeof s.batchName!=='string'||s.batchName.length>LIMITS.batchNameChars))return false;
+    if(s.role==='send'){
+      if(s.batchEntries!=null){if(!Array.isArray(s.batchEntries)||s.batchEntries.length>LIMITS.batchFiles||!s.batchEntries.every(validPersistedEntry))return false;}
+      if(s.batchDone!=null&&(!Number.isSafeInteger(s.batchDone)||s.batchDone<0||s.batchDone>(s.batchEntries?.length||1)))return false;
+      if(s.lastModified!=null&&(!Number.isFinite(s.lastModified)||s.lastModified<0))return false;
+    }else{
+      if(!Number.isSafeInteger(s.received)||s.received<0||s.received>s.size)return false;
+      if(!Number.isSafeInteger(s.nextChunk)||s.nextChunk<0||s.nextChunk>total)return false;
+      const needed=Math.ceil(total/8);if(s.receivedMap!=null&&(!(s.receivedMap instanceof Uint8Array)||s.receivedMap.byteLength!==needed))return false;
+      if(s.opfsTempName!=null&&(typeof s.opfsTempName!=='string'||s.opfsTempName.length>LIMITS.fileNameChars))return false;
+    }
+    return true;
+  }
+  window.BlinkSecurity={LIMITS,utf8,validId,safeName,safeRelativePath,chunkCount,validFileRequest,validBatchRequest,validRanges,validTextStart,validTextPart,controlJsonWithinLimit,validPersistedEntry,validPersistedSession};
 })();
