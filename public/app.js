@@ -410,7 +410,7 @@
   }
   const defaultChunkSize = 64 * 1024;
   const maxMemoryFile = 200 * 1024 * 1024;
-  let tuning=BlinkProtocol.chooseTuning({deviceMemory:navigator.deviceMemory||4,cores:navigator.hardwareConcurrency||4});
+  let tuning=BlinkProtocol.chooseTuning({deviceMemory:navigator.deviceMemory||0,cores:navigator.hardwareConcurrency||4});
   let connectionMetrics={rttMs:0,throughputBps:0,relayed:false,localType:'',remoteType:''};
   let benchmarkState=null, benchmarkIncoming='', incomingText=null, reconnectCount=0, diagnosticsTimer=0;
   const maxTextBytes = BlinkSecurity.LIMITS.textBytes;
@@ -655,7 +655,7 @@
     const timeout=setTimeout(()=>benchmarkState?.resolve?.(0),9000);
     const throughput=await done;clearTimeout(timeout);
     if(throughput>0)connectionMetrics.throughputBps=throughput;
-    tuning=BlinkProtocol.chooseTuning({throughputBps:connectionMetrics.throughputBps,rttMs:connectionMetrics.rttMs,deviceMemory:navigator.deviceMemory||4,cores:navigator.hardwareConcurrency||4,maxMessageSize:pc?.sctp?.maxMessageSize||0});
+    tuning=BlinkProtocol.chooseTuning({throughputBps:connectionMetrics.throughputBps,rttMs:connectionMetrics.rttMs,deviceMemory:navigator.deviceMemory||0,cores:navigator.hardwareConcurrency||4,maxMessageSize:pc?.sctp?.maxMessageSize||0});
     if(channel?.readyState==='open')channel.bufferedAmountLowThreshold=tuning.lowWater;
     benchmarkState=null;updateQualityLabel();
   }
@@ -706,7 +706,7 @@
     if (!entry || channel?.readyState !== 'open' || active || pending) return;
     const file = entry.file || entry;
     const relativePath = entry.relativePath || file.webkitRelativePath || '';
-    const tuned=BlinkProtocol.chooseTuning({throughputBps:connectionMetrics.throughputBps,rttMs:connectionMetrics.rttMs,deviceMemory:navigator.deviceMemory||4,cores:navigator.hardwareConcurrency||4,maxMessageSize:pc?.sctp?.maxMessageSize||0});tuning=tuned;if(channel?.readyState==='open')channel.bufferedAmountLowThreshold=tuning.lowWater;
+    const tuned=BlinkProtocol.chooseTuning({throughputBps:connectionMetrics.throughputBps,rttMs:connectionMetrics.rttMs,deviceMemory:navigator.deviceMemory||0,cores:navigator.hardwareConcurrency||4,maxMessageSize:pc?.sctp?.maxMessageSize||0});tuning=tuned;if(channel?.readyState==='open')channel.bufferedAmountLowThreshold=tuning.lowWater;
     const id = entry.transferId || crypto.randomUUID(); active = { id, direction: 'send', file, sourceEntry:entry, relativePath, batchId:outgoingBatch?.id || entry.batchId || null, chunkSize:tuning.chunkSize, highWater:tuning.highWater, sent: 0, nextChunk: 0, remoteReceived:0, remoteWindow:0, flowWake:null, hasher: new BlinkSHA256(), started: Date.now(), accepted: false, paused: false };
     showTransfer(relativePath || file.name, file.size);
     await persistSendSession(entry);
