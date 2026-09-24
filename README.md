@@ -1,7 +1,7 @@
 <p align="center"><img src="public/favicon.svg" width="68" alt="BlinkSend logo"></p>
 <h1 align="center">BlinkSend</h1>
 <p align="center">A self-hosted file transfer tool for two browsers.</p>
-<p align="center"><strong>Current package version:</strong> 0.3.0</p>
+<p align="center"><strong>Current package version:</strong> 0.4.0-beta.1 · <strong>Release status:</strong> Beta</p>
 <p align="center"><a href="#features">Features</a> · <a href="#quick-start">Quick start</a> · <a href="#how-it-works">How it works</a> · <a href="#deploy-your-own-instance">Self-host</a></p>
 
 
@@ -210,6 +210,12 @@ Security- and recovery-sensitive primitives are separated from the UI controller
 ## Reliability and resource limits
 
 BlinkSend treats the other browser as untrusted. Before allocating transfer state or creating destination structures, the client applies explicit limits to control-message size, file metadata, batch counts and bytes, path depth/length, text framing, resume ranges, queue length, and total chunk count. These limits are defined in `public/security.js` and covered by hostile-input tests. File/folder/text/benchmark initiation is also rejected until mutual peer verification completes; persisted reload-resume metadata is revalidated before restore, sender resume refuses a source file that changed size or modification time, accepted folder batches enforce the originally declared file count/byte total through completion, resume positions are bounded to the actual file chunk count, and missing-range resumes use the same precomputed full-file hash for final receiver acknowledgement; they are safety bounds rather than advertised performance targets.
+
+## v0.4 reliability focus
+
+This beta intentionally freezes feature expansion while transfer/recovery/security behavior is hardened. The current pass modularizes security-sensitive primitives, validates hostile peer input before allocation, enforces the peer-verification boundary, tests multi-disconnect reload recovery, validates persisted resume state, enforces accepted folder manifests, fixes missing-range resume hash acknowledgement, and adds real Chromium/Firefox/WebKit pairing + WebRTC clipboard E2E.
+
+See [`CHANGELOG.md`](CHANGELOG.md) for release notes.
 
 ## Browser compatibility
 
