@@ -5,6 +5,15 @@ let hasher=null;
 let hashDirty=false;
 let nextHashOffset=0;
 let initialized=false;
+let scratch=new Uint8Array(0);
+
+function ensureScratch(bytes){
+  if(scratch.byteLength>=bytes)return scratch;
+  let size=1024*1024;
+  while(size<bytes)size*=2;
+  scratch=new Uint8Array(size);
+  return scratch;
+}
 
 async function init(handle,{truncate=false,resumeBytes=0}={}){
   access=await handle.createSyncAccessHandle();
@@ -30,18 +39,29 @@ async function init(handle,{truncate=false,resumeBytes=0}={}){
   postMessage({type:'ready'});
 }
 
-function writeBatch(offset,buffer){
+function writeBatch(start,total,entries){
   if(!initialized||!access)throw new Error('Worker is not initialized');
-  const view=new Uint8Array(buffer);
-  const written=access.write(view,{at:offset});
+  if(!Number.isSafeInteger(start)||start<0||!Number.isSafeInteger(total)||total<0||!Array.isArray(entries))throw new Error('Invalid write batch');
+  const target=ensureScratch(total);
+  let cursor=0;
+  const started=performance.now();
+  for(const entry of entries){
+    const byteOffset=Number(entry.byteOffset)||0,byteLength=Number(entry.byteLength)||0;
+    if(!(entry.buffer instanceof ArrayBuffer)||byteOffset<0||byteLength<0||byteOffset+byteLength>entry.buffer.byteLength)throw new Error('Invalid write entry');
+    const view=new Uint8Array(entry.buffer,byteOffset,byteLength);
+    target.set(view,cursor);cursor+=byteLength;
+  }
+  if(cursor!==total)throw new Error('Write batch length mismatch');
+  const view=target.subarray(0,total);
+  const written=access.write(view,{at:start});
   if(written!==view.byteLength)throw new Error('Short OPFS write');
-  if(!hashDirty&&offset===nextHashOffset){
+  if(!hashDirty&&start===nextHashOffset){
     hasher.update(view);
     nextHashOffset+=view.byteLength;
-  }else if(offset!==nextHashOffset){
+  }else if(start!==nextHashOffset){
     hashDirty=true;
   }
-  return view.byteLength;
+  return {bytes:view.byteLength,writeMs:performance.now()-started};
 }
 
 function hashWhole(size){
@@ -65,9 +85,9 @@ onmessage=async event=>{
       await init(msg.handle,{truncate:!!msg.truncate,resumeBytes:Number(msg.resumeBytes)||0});
       return;
     }
-    if(msg.type==='write'){
-      const bytes=writeBatch(Number(msg.offset)||0,msg.buffer);
-      postMessage({type:'written',id:msg.id,bytes});
+    if(msg.type==='write-batch'){
+      const result=writeBatch(Number(msg.start)||0,Number(msg.total)||0,msg.entries||[]);
+      postMessage({type:'written',id:msg.id,...result});
       return;
     }
     if(msg.type==='flush'){
