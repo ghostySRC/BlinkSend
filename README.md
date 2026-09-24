@@ -1,7 +1,7 @@
 <p align="center"><img src="public/favicon.svg" width="68" alt="BlinkSend logo"></p>
 <h1 align="center">BlinkSend</h1>
 <p align="center">A self-hosted file transfer tool for two browsers.</p>
-<p align="center"><strong>Current package version:</strong> 0.2.0</p>
+<p align="center"><strong>Current package version:</strong> 0.3.0</p>
 <p align="center"><a href="#features">Features</a> · <a href="#quick-start">Quick start</a> · <a href="#how-it-works">How it works</a> · <a href="#deploy-your-own-instance">Self-host</a></p>
 
 
@@ -59,6 +59,10 @@ BlinkSend can also be installed as a PWA on supporting browsers. No account is r
 - Peer verification code derived from the WebRTC DTLS fingerprints. Both devices must confirm the same six-digit code before sending is unlocked.
 - Incremental SHA-256 verification for every file. A transfer is only reported as verified after sender and receiver hashes match.
 - Transfer progress, average speed, cancellation, connection status, and clear errors when pairing fails.
+- Pending individual files are shown in a visible queue and can be reordered, removed, or cleared while another file is sending. Accepted folder batches lock their membership so sender and receiver stay consistent.
+- A verified sender session stays connected after completion and exposes **Send another**, so repeated transfers do not require pairing again.
+- Reconnect/resume states are shown explicitly: connection loss, re-verification, resume percentage, and verification retry are no longer silent state changes.
+- A hidden Diagnostics section in Settings shows connection state, Direct/Relay path, candidate types without addresses, RTT, measured throughput, chunk size, send-buffer target, reconnect count, and browser capability support.
 - SHA-256 mismatches trigger up to two retries of only the affected file, so a bad file inside a large folder does not automatically discard the whole batch.
 - Network-interface changes (for example Wi-Fi to hotspot) trigger an ICE restart from the offerer; active transfers remain paused until the connection is usable again.
 - Restart-safe resume on supported browsers: persistent file handles and IndexedDB session metadata allow an interrupted transfer to continue after a page reload. Receiver writes are checkpointed to disk and a chunk bitmap/range map records what is present, so reconnects can request missing ranges rather than blindly restarting.
@@ -68,7 +72,7 @@ BlinkSend can also be installed as a PWA on supporting browsers. No account is r
 - Live transfer speed uses smoothing instead of a noisy instant value, includes an ETA, and folder batches show whole-batch bytes plus the current file.
 - Connection status reports Direct vs Relay plus a simple Excellent / Good / Fair / Poor quality label based on measured RTT and throughput.
 - English and Swedish interface, plus light and dark modes. Your choices are saved on each device; the initial theme follows your system setting.
-- Optional local device names are exchanged only with the connected peer. Optional completion sound/vibration stays off unless enabled.
+- Your device nickname is stored locally and sent only to the connected peer. BlinkSend also keeps a small local list of recent peer names for recognition and includes the peer name in local transfer history. These labels are not cryptographic identities. Optional completion sound/vibration stays off unless enabled.
 - Local-only transfer history keeps the latest verified file transfers and text sends in IndexedDB; it can be cleared from Settings.
 - Received files can be handed to the operating system's native share sheet when the browser supports Web Share files.
 - On platforms that support the Web Share Target API, BlinkSend can appear in the system Share menu. Shared files/text are intercepted locally by the service worker, staged in device-local IndexedDB, and then sent through the normal peer-to-peer flow after pairing.
@@ -191,7 +195,7 @@ BlinkSend includes in-memory per-IP limits for room joins, WebSocket upgrades, Q
 | A transfer stops midway | BlinkSend should resume after reconnect. On supported desktop browsers it can also recover the current transfer after a reload; click **Resume transfer** and grant file access if prompted. |
 | Reverse proxy loads the page but pairing fails | Ensure `/signal` supports WebSocket upgrades and the page is served over HTTPS. |
 
-## Development and contributions
+## Development
 
 ```bash
 npm ci
