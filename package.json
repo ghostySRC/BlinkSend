@@ -25,7 +25,7 @@
   "bugs": {
     "url": "https://github.com/ghostySRC/BlinkSend/issues"
   },
-  "homepage": "https://github.com/ghostySRC/BlinkSend#readme",
+  "homepage": "https://blinksend-production.up.railway.app",
   "keywords": [
     "webrtc",
     "p2p",

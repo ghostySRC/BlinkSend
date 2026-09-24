@@ -12,8 +12,9 @@
 </p>
 
 <p align="center"><strong>0.4.0-beta.1</strong> · WebRTC · resumable transfers · SHA-256 verification · self-hostable</p>
-<p align="center"><a href="#see-it-in-action">Demo</a> · <a href="#why-blinksend">Why BlinkSend</a> · <a href="#quick-start">Quick start</a> · <a href="#deploy-your-own-instance">Self-host</a> · <a href="COMPATIBILITY.md">Compatibility</a></p>
+<p align="center"><strong><a href="https://blinksend-production.up.railway.app">Try BlinkSend live</a></strong> · <a href="#see-it-in-action">Demo</a> · <a href="#why-blinksend">Why BlinkSend</a> · <a href="#quick-start">Quick start</a> · <a href="#deploy-your-own-instance">Self-host</a> · <a href="COMPATIBILITY.md">Compatibility</a></p>
 
+> **Live demo:** https://blinksend-production.up.railway.app  
 > **Beta:** BlinkSend is under active reliability and cross-browser testing. Chromium, Firefox, and WebKit pairing/verification/WebRTC clipboard flows run in CI; platform-specific file APIs still require real-device testing.
 
 ## Why BlinkSend
