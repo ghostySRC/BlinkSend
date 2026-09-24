@@ -495,36 +495,20 @@
     channel?.close(); pc?.close(); channel = null; pc = null;
     status('waiting');
   }
-  function fingerprint(desc) {
-    const match = desc?.sdp?.match(/^a=fingerprint:sha-256\s+([A-Fa-f0-9:]+)/mi);
-    return match ? match[1].replace(/:/g, '').toLowerCase() : '';
-  }
   async function showVerificationCode() {
-    const local = fingerprint(pc?.localDescription), remote = fingerprint(pc?.remoteDescription);
-    if (!local || !remote) return;
-    const material = [local, remote].sort().join(':');
-    const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(material)));
-    const value = (((digest[0] * 0x1000000) + (digest[1] << 16) + (digest[2] << 8) + digest[3]) >>> 0) % 1000000;
-    const code = String(value).padStart(6, '0'), display = `${code.slice(0,3)} ${code.slice(3)}`;
-    if (display === verificationCode && peerVerified) return;
-    verificationCode = display; els['verify-code'].textContent = display; els['verify-match'].disabled = false;
-    els['verify-peer'].hidden = false; peerVerified = false; localVerified = false; remoteVerified = false; status('verifyStatus', false);
+    const display=await BlinkVerification.deriveCode(pc?.localDescription,pc?.remoteDescription);
+    if(!display)return;if(display===verificationCode&&peerVerified)return;
+    verificationCode=display;els['verify-code'].textContent=display;els['verify-match'].disabled=false;
+    els['verify-peer'].hidden=false;peerVerified=false;localVerified=false;remoteVerified=false;status('verifyStatus',false);
   }
   async function connectionPath() {
     const current = pc;
     try {
       const stats = await current.getStats();
       if (pc !== current || channel?.readyState !== 'open') return;
-      let pair;
-      for (const item of stats.values()) {
-        if (item.type === 'transport' && item.selectedCandidatePairId) pair = stats.get(item.selectedCandidatePairId);
-        if (!pair && item.type === 'candidate-pair' && item.nominated && item.state === 'succeeded') pair = item;
-      }
-      const local = stats.get(pair?.localCandidateId), remote = stats.get(pair?.remoteCandidateId);
-      const relayed=local?.candidateType==='relay'||remote?.candidateType==='relay';
-      const rttSec=pair?.currentRoundTripTime||(pair?.totalRoundTripTime&&pair?.responsesReceived?pair.totalRoundTripTime/pair.responsesReceived:0);
-      connectionMetrics.relayed=!!relayed;connectionMetrics.rttMs=Math.round((rttSec||0)*1000);connectionMetrics.localType=local?.candidateType||'';connectionMetrics.remoteType=remote?.candidateType||'';
-      readyLabel=!pair?'ready':relayed?'readyRelay':'readyDirect';updateQualityLabel();updateDiagnostics();
+      const summary=BlinkConnection.summarize(stats);
+      connectionMetrics.relayed=summary.relayed;connectionMetrics.rttMs=summary.rttMs;connectionMetrics.localType=summary.localType;connectionMetrics.remoteType=summary.remoteType;
+      readyLabel=!summary.pair?'ready':summary.relayed?'readyRelay':'readyDirect';updateQualityLabel();updateDiagnostics();
       await showVerificationCode();
     } catch { if (pc === current && channel?.readyState === 'open') await showVerificationCode(); }
   }
@@ -645,33 +629,7 @@
   async function clearPersistent() { if (window.BlinkStore && room) { try { await BlinkStore.remove(sessionKey()); } catch {} } }
   async function clearBatchContext() { if (window.BlinkStore && room) { try { await BlinkStore.remove(`batch:${room}`); } catch {} } }
   async function rebuildReceiveHasher(handle, bytes) {
-    const file = await handle.getFile(); return hashPrefix(file, Math.min(bytes, file.size));
-  }
-  async function nestedFileHandle(root, relativePath, fallbackName) {
-    const parts = (relativePath || fallbackName).split('/').filter(Boolean);
-    let dir = root;
-    for (const part of parts.slice(0,-1)) dir = await dir.getDirectoryHandle(part, { create:true });
-    return dir.getFileHandle(parts.at(-1) || fallbackName, { create:true });
-  }
-  async function collectDirectory(handle, prefix = '', depth = 0, state = {count:0,total:0}) {
-    if(depth>BlinkSecurity.LIMITS.directoryDepth)throw new Error('Folder depth limit');
-    const entries=[];
-    for await (const [name,child] of handle.entries()) {
-      if(state.count>=BlinkSecurity.LIMITS.batchFiles)throw new Error('Folder file limit');
-      const path=prefix?`${prefix}/${name}`:name;if(BlinkSecurity.safeRelativePath(path)===null)throw new Error('Invalid folder path');
-      if(child.kind==='directory')entries.push(...await collectDirectory(child,path,depth+1,state));
-      else{const file=await child.getFile();state.count++;state.total+=file.size;if(file.size>BlinkSecurity.LIMITS.fileBytes||state.total>BlinkSecurity.LIMITS.batchBytes)throw new Error('Folder size limit');entries.push({file,handle:child,relativePath:path});}
-    }
-    return entries;
-  }
-  async function hashPrefix(file, bytes, size=defaultChunkSize) {
-    const hasher = new BlinkSHA256(); let offset = 0;
-    while (offset < bytes) { const part = await file.slice(offset, Math.min(bytes, offset + size)).arrayBuffer(); hasher.update(part); offset += part.byteLength; }
-    return hasher;
-  }
-  function packChunk(seq, part) {
-    const payload = new Uint8Array(part), packet = new Uint8Array(payload.length + 4);
-    new DataView(packet.buffer).setUint32(0, seq); packet.set(payload, 4); return packet.buffer;
+    const file = await handle.getFile(); return BlinkTransfer.hashPrefix(file, Math.min(bytes, file.size));
   }
   function updateQualityLabel(){
     const q=BlinkProtocol.connectionQuality(connectionMetrics);
@@ -710,33 +668,29 @@
     calibrating=true;status('verified',true);
     runBenchmark().catch(()=>{}).finally(()=>{calibrating=false;status('verified',true);flushSharedTarget();});
   }
-  function bitmapHas(bitmap,index){return !!(bitmap?.[index>>3]&(1<<(index&7)));}
-  function makePrefixBitmap(totalChunks,prefixChunks){const map=new Uint8Array(Math.ceil(totalChunks/8));for(let i=0;i<Math.min(totalChunks,prefixChunks);i++)BlinkProtocol.markChunk(map,i);return map;}
   function sendResumeMap(){
     if(!active||active.direction!=='receive'||channel?.readyState!=='open')return;
     const total=Math.ceil(active.size/(active.chunkSize||defaultChunkSize));
     const ranges=BlinkProtocol.missingRanges(active.receivedMap||new Uint8Array(Math.ceil(total/8)),total);
     channel.send(JSON.stringify({type:'resume-map',id:active.id,ranges,size:active.size,chunkSize:active.chunkSize||defaultChunkSize}));
   }
-  async function hashWholeFile(file,size=defaultChunkSize){return (await hashPrefix(file,file.size,size)).hex();}
   async function hashReceivedActive(state){
-    if(state.persistentHandle)return hashWholeFile(await state.persistentHandle.getFile(),state.chunkSize);
-    if(state.opfs?.handle)return hashWholeFile(await state.opfs.handle.getFile(),state.chunkSize);
+    if(state.persistentHandle)return BlinkTransfer.hashWholeFile(await state.persistentHandle.getFile(),state.chunkSize);
+    if(state.opfs?.handle)return BlinkTransfer.hashWholeFile(await state.opfs.handle.getFile(),state.chunkSize);
     const h=new BlinkSHA256();for(const part of state.chunks||[]){if(part)h.update(part);}return h.hex();
   }
-
   async function resumeOutgoingRanges(ranges){
     if(!active||active.direction!=='send')return;
     const size=active.chunkSize||defaultChunkSize,total=Math.ceil(active.file.size/size);
     if(!BlinkSecurity.validRanges(ranges,total))return;
-    active.fullHash=await hashWholeFile(active.file,size);active.hasher=null;active.sendRanges=ranges.map(r=>[r[0],r[1]]);active.rangeIndex=0;active.rangeSeq=active.sendRanges[0]?.[0]??total;
+    active.fullHash=await BlinkTransfer.hashWholeFile(active.file,size);active.hasher=null;active.sendRanges=ranges.map(r=>[r[0],r[1]]);active.rangeIndex=0;active.rangeSeq=active.sendRanges[0]?.[0]??total;
     let missing=0;for(const [s,e] of active.sendRanges){const start=s*size,end=Math.min(active.file.size,(e+1)*size);missing+=Math.max(0,end-start);}
     active.sent=Math.max(0,active.file.size-missing);active.paused=false;active.stage='resuming';setTransferBanner(tr('resumeBanner',{percent:Math.floor((active.sent/Math.max(1,active.file.size))*100)}),'ok');progress(active.sent,active.file.size,active.started,'sending');pump(active.id);
   }
   async function resumeOutgoing(nextChunk) {
     if (!active || active.direction !== 'send' || !Number.isSafeInteger(nextChunk) || nextChunk < 0) return;
     const size=active.chunkSize||defaultChunkSize; const offset = Math.min(active.file.size, nextChunk * size); active.sent = offset; active.nextChunk = nextChunk;
-    active.hasher = await hashPrefix(active.file, offset, size); active.fullHash=''; active.sendRanges=null; active.paused = false; active.stage = 'resuming';setTransferBanner(tr('resumeBanner',{percent:Math.floor((offset/Math.max(1,active.file.size))*100)}),'ok');
+    active.hasher = await BlinkTransfer.hashPrefix(active.file, offset, size); active.fullHash=''; active.sendRanges=null; active.paused = false; active.stage = 'resuming';setTransferBanner(tr('resumeBanner',{percent:Math.floor((offset/Math.max(1,active.file.size))*100)}),'ok');
     progress(offset, active.file.size, active.started, 'sending'); pump(active.id);
   }
   async function sendFile(entry) {
@@ -779,7 +733,7 @@
           if(channel.readyState!=='open')throw new Error('Connection closed');
           if(channel.bufferedAmount>(active.highWater||tuning.highWater)){await new Promise(resolve=>channel.addEventListener('bufferedamountlow',resolve,{once:true}));continue;}
           const seq=active.rangeSeq++,offset=seq*size,part=await file.slice(offset,Math.min(file.size,offset+size)).arrayBuffer();
-          if(active?.id!==id||active.paused)return;channel.send(packChunk(seq,part));active.sent=Math.min(file.size,active.sent+part.byteLength);progress(active.sent,file.size,active.started,'sending');
+          if(active?.id!==id||active.paused)return;channel.send(BlinkTransfer.packChunk(seq,part));active.sent=Math.min(file.size,active.sent+part.byteLength);progress(active.sent,file.size,active.started,'sending');
         }
         if(active?.id===id&&!active.paused){channel.send(JSON.stringify({type:'complete',id,sha256:active.fullHash}));active.stage='finishing';progressState=null;renderTransfer();}return;
       }
@@ -787,7 +741,7 @@
         if(channel.readyState!=='open')throw new Error('Connection closed');
         if(channel.bufferedAmount>(active.highWater||tuning.highWater)){await new Promise(resolve=>channel.addEventListener('bufferedamountlow',resolve,{once:true}));continue;}
         const seq=active.nextChunk,part=await file.slice(active.sent,active.sent+size).arrayBuffer();
-        if(active?.id!==id||active.paused)return;active.hasher.update(part);channel.send(packChunk(seq,part));active.sent+=part.byteLength;active.nextChunk++;progress(active.sent,file.size,active.started,'sending');
+        if(active?.id!==id||active.paused)return;active.hasher.update(part);channel.send(BlinkTransfer.packChunk(seq,part));active.sent+=part.byteLength;active.nextChunk++;progress(active.sent,file.size,active.started,'sending');
       }
       if(active?.id===id&&!active.paused){channel.send(JSON.stringify({type:'complete',id,sha256:active.fullHash||active.hasher.hex()}));active.stage='finishing';progressState=null;renderTransfer();}
     } catch {if(active?.id===id){pauseTransfer();status('paused');}}
@@ -888,16 +842,16 @@
   }
   async function receiveChunk(data) {
     if(!active||active.direction!=='receive')return;
-    const packet=new Uint8Array(data);if(packet.byteLength<4)return;
-    const seq=new DataView(packet.buffer,packet.byteOffset,packet.byteLength).getUint32(0),payload=packet.subarray(4),size=active.chunkSize||defaultChunkSize;
-    const totalChunks=Math.ceil(active.size/size);if(seq>=totalChunks){stopTransfer('excess');return;}if(bitmapHas(active.receivedMap,seq))return;
+    const unpacked=BlinkTransfer.unpackChunk(data);if(!unpacked)return;
+    const {seq,payload}=unpacked,size=active.chunkSize||defaultChunkSize;
+    const totalChunks=Math.ceil(active.size/size);if(seq>=totalChunks){stopTransfer('excess');return;}if(BlinkTransfer.bitmapHas(active.receivedMap,seq))return;
     const offset=seq*size;if(offset+payload.byteLength>active.size){stopTransfer('excess');return;}
     try{
       if(seq!==active.nextChunk)active.hashDirty=true;
       if(!active.hashDirty&&seq===active.nextChunk)active.hasher.update(payload);
       if(active.writer){await active.writer.seek(offset);await active.writer.write(payload);}else active.chunks[seq]=payload.slice();
       BlinkProtocol.markChunk(active.receivedMap,seq);active.received+=payload.byteLength;
-      while(active.nextChunk<totalChunks&&bitmapHas(active.receivedMap,active.nextChunk))active.nextChunk++;
+      while(active.nextChunk<totalChunks&&BlinkTransfer.bitmapHas(active.receivedMap,active.nextChunk))active.nextChunk++;
       if(active.persistentHandle&&active.writer&&active.received-(active.committedBytes||0)>=8*1024*1024){
         await active.writer.close();active.committedBytes=active.received;await persistReceiveSession();active.writer=await active.persistentHandle.createWritable({keepExistingData:true});
       }
@@ -909,7 +863,7 @@
     const request = pending;
     let writer, opfs, persistentHandle;
     if (fromBatch && incomingBatch?.rootHandle) {
-      try { const parts=(request.relativePath || request.name).split('/').filter(Boolean); if (parts[0] === incomingBatch.name) parts.shift(); persistentHandle = await nestedFileHandle(incomingBatch.rootHandle, parts.join('/'), request.name); writer = await persistentHandle.createWritable(); }
+      try { const parts=(request.relativePath || request.name).split('/').filter(Boolean); if (parts[0] === incomingBatch.name) parts.shift(); persistentHandle = await BlinkStorage.nestedFileHandle(incomingBatch.rootHandle, parts.join('/'), request.name); writer = await persistentHandle.createWritable(); }
       catch { notice('saveLocationFailed'); return; }
     } else if (window.showSaveFilePicker) {
       try { persistentHandle = await showSaveFilePicker({ suggestedName: request.name }); writer = await persistentHandle.createWritable(); }
@@ -958,7 +912,7 @@
   els['choose-folder'].onclick = async () => {
     if (els.folder.disabled) return;
     if (!window.showDirectoryPicker) { els.folder.click(); return; }
-    try { const handle = await showDirectoryPicker({ mode:'read' }); const entries = await collectDirectory(handle, handle.name); enqueueEntries(entries, handle.name); }
+    try { const handle = await showDirectoryPicker({ mode:'read' }); const entries = await BlinkStorage.collectDirectory(handle, handle.name); enqueueEntries(entries, handle.name); }
     catch (error) { if (error.name !== 'AbortError') notice('saveLocationFailed'); }
   };
   els.folder.onchange = () => { const files=[...els.folder.files]; els.folder.value=''; const name=files[0]?.webkitRelativePath?.split('/')[0] || ''; enqueueEntries(files.map(file=>({file,relativePath:file.webkitRelativePath||''})), name); };
@@ -1002,7 +956,7 @@
   async function collectDrop(dt){
     const items=[...(dt.items||[])],entries=[];
     if(items.length&&items.some(i=>typeof i.getAsFileSystemHandle==='function')){
-      for(const item of items){const handle=await item.getAsFileSystemHandle?.();if(!handle)continue;if(handle.kind==='directory')entries.push(...await collectDirectory(handle,handle.name));else entries.push({handle,file:await handle.getFile(),relativePath:''});}
+      for(const item of items){const handle=await item.getAsFileSystemHandle?.();if(!handle)continue;if(handle.kind==='directory')entries.push(...await BlinkStorage.collectDirectory(handle,handle.name));else entries.push({handle,file:await handle.getFile(),relativePath:''});}
       return entries;
     }
     if(items.length&&items.some(i=>typeof i.webkitGetAsEntry==='function')){for(const item of items){const entry=item.webkitGetAsEntry?.();if(entry)entries.push(...await collectLegacyEntry(entry));}if(entries.length)return entries;}
@@ -1062,7 +1016,7 @@
       const writer=await s.handle.createWritable({keepExistingData:true});
       incomingBatch=s.batchId?{id:s.batchId,name:s.batchName,rootHandle:s.batchRootHandle,accepted:true}:null;
       let restoredOpfs=null;if(s.opfs&&s.opfsTempName){const root=await navigator.storage.getDirectory();restoredOpfs={root,handle:s.handle,tempName:s.opfsTempName};}
-      const restoredMap=s.receivedMap instanceof Uint8Array?s.receivedMap:makePrefixBitmap(totalChunks,nextChunk),hashDirty=received!==prefixBytes;
+      const restoredMap=s.receivedMap instanceof Uint8Array?s.receivedMap:BlinkTransfer.makePrefixBitmap(totalChunks,nextChunk),hashDirty=received!==prefixBytes;
       active={id:s.transferId,direction:'receive',name:s.name,size:s.size,relativePath:s.relativePath||'',chunkSize:restoredChunk,received,committedBytes:received,nextChunk,receivedMap:restoredMap,hasher:await rebuildReceiveHasher(s.handle,prefixBytes),hashDirty,retries:0,chunks:null,writer,persistentHandle:s.handle,opfs:restoredOpfs,started:Date.now(),paused:true,batchId:s.batchId||null};
       showTransfer(s.relativePath || s.name,s.size); active.stage='resuming'; renderTransfer();
     }

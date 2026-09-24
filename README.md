@@ -203,6 +203,10 @@ BlinkSend includes in-memory per-IP limits for room joins, WebSocket upgrades, Q
 | A transfer stops midway | BlinkSend should resume after reconnect. On supported desktop browsers it can also recover the current transfer after a reload; click **Resume transfer** and grant file access if prompted. |
 | Reverse proxy loads the page but pairing fails | Ensure `/signal` supports WebSocket upgrades and the page is served over HTTPS. |
 
+## Client architecture
+
+Security- and recovery-sensitive primitives are separated from the UI controller: `verification.js` derives the peer code from DTLS fingerprints, `connection.js` summarizes selected WebRTC transport statistics without exposing candidate addresses, `transfer-core.js` owns chunk/bitmap/hash primitives, `storage.js` owns bounded filesystem traversal, `security.js` owns peer-input limits, and `persistence.js` owns IndexedDB session/history state. `app.js` remains the browser orchestrator rather than the implementation home for every primitive.
+
 ## Reliability and resource limits
 
 BlinkSend treats the other browser as untrusted. Before allocating transfer state or creating destination structures, the client applies explicit limits to control-message size, file metadata, batch counts and bytes, path depth/length, text framing, resume ranges, queue length, and total chunk count. These limits are defined in `public/security.js` and covered by hostile-input tests; they are safety bounds rather than advertised performance targets.
