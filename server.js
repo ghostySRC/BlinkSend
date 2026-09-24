@@ -28,6 +28,10 @@ function iceServers() {
 const server = http.createServer(async (req, res) => {
   try {
     const pathname = new URL(req.url, 'http://localhost').pathname;
+    if (pathname === '/health') {
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+      res.end(JSON.stringify({ status: 'ok' })); return;
+    }
     if (pathname === '/ice') {
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer' });
       res.end(JSON.stringify({ iceServers: iceServers() })); return;
@@ -35,17 +39,14 @@ const server = http.createServer(async (req, res) => {
     if (pathname === '/qr') {
       const value = new URL(req.url, 'http://localhost').searchParams.get('url') || '';
       const parsed = new URL(value);
-      if (!['http:', 'https:'].includes(parsed.protocol) || parsed.host !== req.headers.host || !/^[a-f0-9]{32}$/.test(parsed.hash.slice(1)) || value.length > 2048) { res.writeHead(400).end(); return; }
+      if (!['http:', 'https:'].includes(parsed.protocol) || parsed.host !== req.headers.host || parsed.pathname !== '/' || parsed.search || !/^[a-f0-9]{32}$/.test(parsed.hash.slice(1)) || value.length > 2048) { res.writeHead(400).end(); return; }
       const svg = await QRCode.toString(value, { type: 'svg', margin: 1, color: { dark: '#13231e', light: '#ffffff' } });
       res.writeHead(200, { 'Content-Type': 'image/svg+xml', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer' });
       res.end(svg); return;
     }
-    let file;
-    {
-      const relative = pathname === '/' ? 'index.html' : pathname.slice(1);
-      file = path.resolve(publicDir, relative);
-      if (!file.startsWith(publicDir + path.sep)) { res.writeHead(403).end(); return; }
-    }
+    const relative = pathname === '/' ? 'index.html' : pathname.slice(1);
+    const file = path.resolve(publicDir, relative);
+    if (!file.startsWith(publicDir + path.sep)) { res.writeHead(403).end(); return; }
     const info = await stat(file);
     if (!info.isFile()) { res.writeHead(404).end(); return; }
     res.writeHead(200, { 'Content-Type': types[path.extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer', 'Content-Security-Policy': "default-src 'self'; connect-src 'self' wss: ws:; img-src 'self' data:; style-src 'self'; script-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'" });
@@ -56,6 +57,10 @@ const server = http.createServer(async (req, res) => {
 const wss = new WebSocketServer({ noServer: true, maxPayload: 32 * 1024 });
 server.on('upgrade', (req, socket, head) => {
   if (new URL(req.url, 'http://localhost').pathname !== '/signal') { socket.destroy(); return; }
+  if (req.headers.origin) {
+    try { if (new URL(req.headers.origin).host !== req.headers.host) { socket.write('HTTP/1.1 403 Forbidden\r\n\r\n'); socket.destroy(); return; } }
+    catch { socket.destroy(); return; }
+  }
   wss.handleUpgrade(req, socket, head, ws => wss.emit('connection', ws));
 });
 

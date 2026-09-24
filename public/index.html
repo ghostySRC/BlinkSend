@@ -27,8 +27,8 @@
           <div class="step">02 <span>Transfer</span></div>
           <h2 id="transfer-title">Send a file</h2>
           <div class="connection"><span id="status-dot" class="status-dot" aria-hidden="true"></span><span id="status" role="status">Connecting to room…</span></div>
-          <label class="drop" id="drop"><input id="file" type="file" disabled><span class="upload-icon" aria-hidden="true">↑</span><strong>Choose a file</strong><span>or drop it here on a computer</span></label>
-          <div id="transfer-info" class="transfer-info" hidden><div class="file-row"><span id="file-name"></span><span id="file-size"></span></div><progress id="progress" max="100" value="0"></progress><div class="file-row muted"><span id="progress-text">Preparing…</span><button id="cancel" type="button" class="text-button">Cancel</button></div></div>
+          <label class="drop" id="drop"><input id="file" type="file" multiple disabled><span class="upload-icon" aria-hidden="true">↑</span><strong>Choose files</strong><span>or drop them here on a computer</span></label>
+          <div id="transfer-info" class="transfer-info" hidden><div class="file-row"><span id="file-name"></span><span id="file-size"></span></div><progress id="progress" max="100" value="0" aria-label="Transfer progress"></progress><div class="file-row muted"><span id="progress-text">Preparing…</span><button id="cancel" type="button" class="text-button">Cancel</button></div><p id="queue-status" class="queue-status" role="status" hidden></p></div>
           <p class="hint">Files go directly between devices when a connection is available. Nothing is stored by BlinkSend.</p>
         </section>
       </div>

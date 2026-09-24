@@ -25,6 +25,8 @@ test('serves the app and pairs only two browsers, forwarding signaling and peer 
     const response = await fetch(`http://127.0.0.1:${port}/`);
     assert.equal(response.status, 200);
     assert.match(await response.text(), /BlinkSend/);
+    const health = await fetch(`http://127.0.0.1:${port}/health`);
+    assert.deepEqual(await health.json(), { status: 'ok' });
     const iceResponse = await fetch(`http://127.0.0.1:${port}/ice`);
     assert.deepEqual((await iceResponse.json()).iceServers, [{ urls: 'stun:stun.l.google.com:19302' }]);
     process.env.TURN_URLS = 'turn:relay.example.org:3478,turns:relay.example.org:5349';
@@ -37,6 +39,12 @@ test('serves the app and pairs only two browsers, forwarding signaling and peer 
     const qr = await fetch(`http://127.0.0.1:${port}/qr?url=${encodeURIComponent(`http://127.0.0.1:${port}/#${'a'.repeat(32)}`)}`);
     assert.equal(qr.status, 200);
     assert.match(await qr.text(), /<svg/);
+    const unrelatedQR = await fetch(`http://127.0.0.1:${port}/qr?url=${encodeURIComponent(`https://other.example/#${'a'.repeat(32)}`)}`);
+    assert.equal(unrelatedQR.status, 400);
+    await assert.rejects(new Promise((resolve, reject) => {
+      const foreign = new WebSocket(url, { origin: 'https://other.example' });
+      foreign.once('open', resolve); foreign.once('error', reject);
+    }), /403/);
     const room = 'a'.repeat(32);
     const first = await connect();
     const firstJoin = next(first); first.send(JSON.stringify({ type: 'join', room }));
