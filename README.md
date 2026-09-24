@@ -20,7 +20,8 @@ Set `PORT` to change the listening port. The same Node server serves the web app
 - WebRTC data channels carry the file directly between browsers, encrypted in transit. The Node server only exchanges connection information.
 - Both browser tabs must stay open and online throughout the transfer. Only one file is transferred at a time.
 - Desktop browsers supporting `showSaveFilePicker` can stream received files to disk. Other browsers download the file after buffering it in memory and are limited to **200 MB** per file. This matters especially on phones and iOS.
-- A public STUN server helps devices connect across networks. Some network combinations require a TURN relay. **This version has no relay**; those connections will fail rather than fall back to server transfer. Large file speeds vary with network upload, Wi-Fi, browser, and device performance.
+- A public STUN server helps devices connect across networks. Some network combinations require a TURN relay. **Relay support is optional and disabled by default**; without it, those connections fail rather than fall back to server transfer. Large file speeds vary with network upload, Wi-Fi, browser, and device performance.
+- To enable relay fallback, run a TURN server such as coturn with `use-auth-secret`, then set `TURN_URLS` to comma-separated `turn:`/`turns:` addresses and `TURN_SECRET` to its shared secret. BlinkSend issues one-hour temporary credentials via `/ice`. Relay bandwidth is paid for by whoever runs the TURN server; an accountless public relay cannot guarantee zero hosting costs.
 - The invite link contains a random 128-bit room identifier. Anyone with the link can join, so treat it as private. No account or permanent server storage is used.
 
 ## Development

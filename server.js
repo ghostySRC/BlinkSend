@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { WebSocketServer, WebSocket } from 'ws';
 import QRCode from 'qrcode';
+import { createHmac } from 'node:crypto';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.join(root, 'public');
@@ -13,9 +14,24 @@ const maxAge = 30 * 60 * 1000;
 const rooms = new Map();
 const types = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.svg': 'image/svg+xml' };
 
+function iceServers() {
+  const servers = [{ urls: 'stun:stun.l.google.com:19302' }];
+  const urls = (process.env.TURN_URLS || '').split(',').map(v => v.trim()).filter(v => /^turns?:[^\s]+$/i.test(v));
+  if (urls.length && process.env.TURN_SECRET) {
+    const username = `${Math.floor(Date.now() / 1000) + 3600}:blinksend`;
+    const credential = createHmac('sha1', process.env.TURN_SECRET).update(username).digest('base64');
+    servers.push({ urls, username, credential });
+  }
+  return servers;
+}
+
 const server = http.createServer(async (req, res) => {
   try {
     const pathname = new URL(req.url, 'http://localhost').pathname;
+    if (pathname === '/ice') {
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer' });
+      res.end(JSON.stringify({ iceServers: iceServers() })); return;
+    }
     if (pathname === '/qr') {
       const value = new URL(req.url, 'http://localhost').searchParams.get('url') || '';
       const parsed = new URL(value);
