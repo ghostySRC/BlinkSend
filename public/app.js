@@ -744,7 +744,7 @@
         const seq=active.nextChunk,part=await file.slice(active.sent,active.sent+size).arrayBuffer();
         if(active?.id!==id||active.paused)return;active.hasher.update(part);channel.send(BlinkTransfer.packChunk(seq,part));active.sent+=part.byteLength;active.nextChunk++;progress(active.sent,file.size,active.started,'sending');
       }
-      if(active?.id===id&&!active.paused){channel.send(JSON.stringify({type:'complete',id,sha256:active.fullHash||active.hasher.hex()}));active.stage='finishing';progressState=null;renderTransfer();}
+      if(active?.id===id&&!active.paused){channel.send(JSON.stringify({type:'complete',id,sha256:BlinkTransfer.finalHash(active)}));active.stage='finishing';progressState=null;renderTransfer();}
     } catch {if(active?.id===id){pauseTransfer();status('paused');}}
   }
   async function control(raw) {
@@ -784,6 +784,7 @@
     }
     if (msg.type === 'accept' && active?.id === msg.id && active.direction === 'send') { active.accepted = true; active.paused = false; pump(msg.id); }
     if (msg.type === 'resume' && active?.id === msg.id && active.direction === 'send' && Number.isSafeInteger(msg.nextChunk) && msg.nextChunk >= 0) {
+      const total=BlinkSecurity.chunkCount(active.file.size,active.chunkSize||defaultChunkSize);if(msg.nextChunk>total)return;
       if (!peerVerified) active.pendingResume = msg.nextChunk; else await resumeOutgoing(msg.nextChunk);
     }
     if(msg.type==='resume-map'&&active?.id===msg.id&&active.direction==='send'){
@@ -829,7 +830,7 @@
       } catch { stopTransfer('saveFailed'); }
     }
     if (msg.type === 'saved' && active?.id === msg.id && active.direction === 'send') {
-      const sentHash = active.hasher.hex(); if (msg.sha256 !== sentHash) { stopTransfer('hashMismatch', false); return; }
+      const sentHash=BlinkTransfer.finalHash(active); if (!sentHash || msg.sha256 !== sentHash) { stopTransfer('hashMismatch', false); return; }
       await recordHistory({name:active.relativePath||active.file.name,size:active.file.size,direction:'send',verified:true,sha256:sentHash,peer:peerName});
       completionCue();
       setTransferBanner();finishOutgoing('verifiedSent', { current: batchDone + 1, total: batchTotal });

@@ -21,3 +21,7 @@ test('transfer chunk packing is reversible and duplicate bitmap checks are pure'
   const packed=t.packChunk(77,Uint8Array.from([4,5,6]).buffer),u=t.unpackChunk(packed);assert.equal(u.seq,77);assert.deepEqual([...u.payload],[4,5,6]);
   const map=t.makePrefixBitmap(10,3);assert.equal(t.bitmapHas(map,0),true);assert.equal(t.bitmapHas(map,2),true);assert.equal(t.bitmapHas(map,3),false);
 });
+test('final sender hash works for normal and missing-range resume paths',async()=>{
+  const ctx={window:{BlinkProtocol:{markChunk:()=>{}},BlinkSecurity:{chunkCount:()=>1,LIMITS:{maxChunks:10}},BlinkSHA256:class{}}};await run('transfer-core.js',ctx);const t=ctx.window.BlinkTransfer;
+  const hash='a'.repeat(64);assert.equal(t.finalHash({fullHash:hash,hasher:null}),hash);assert.equal(t.finalHash({fullHash:'',hasher:{hex:()=>hash}}),hash);assert.equal(t.finalHash({}), '');
+});

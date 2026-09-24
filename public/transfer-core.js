@@ -21,5 +21,6 @@
     window.BlinkProtocol.markChunk(state.receivedMap,seq);state.received+=bytes;while(state.nextChunk<state.totalChunks&&bitmapHas(state.receivedMap,state.nextChunk))state.nextChunk++;return {...check,committed:true};
   }
   function missingRanges(state){return window.BlinkProtocol.missingRanges(state.receivedMap,state.totalChunks);}
-  window.BlinkTransfer={bitmapHas,makePrefixBitmap,hashPrefix,hashWholeFile,packChunk,unpackChunk,makeReceiveState,inspectChunk,commitChunk,missingRanges};
+  function finalHash(state){if(typeof state?.fullHash==='string'&&/^[a-f0-9]{64}$/.test(state.fullHash))return state.fullHash;return state?.hasher&&typeof state.hasher.hex==='function'?state.hasher.hex():'';}
+  window.BlinkTransfer={bitmapHas,makePrefixBitmap,hashPrefix,hashWholeFile,packChunk,unpackChunk,makeReceiveState,inspectChunk,commitChunk,missingRanges,finalHash};
 })();

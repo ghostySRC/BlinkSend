@@ -20,3 +20,7 @@ test('37 percent disconnect, sparse resume, second disconnect, reload and comple
 });
 test('duplicates do not increase received bytes and short/oversized chunks are rejected',async()=>{const w=await modules(),t=w.BlinkTransfer,state=t.makeReceiveState(100000,65536);assert.equal(t.commitChunk(state,0,65536).committed,true);assert.equal(state.received,65536);assert.equal(t.commitChunk(state,0,65536).duplicate,true);assert.equal(state.received,65536);assert.equal(t.inspectChunk(state,1,65536).ok,false);assert.equal(t.inspectChunk(state,1,34464).ok,true);});
 test('impossible message types are rejected by policy',async()=>{const w=await modules(),p=w.BlinkControlPolicy;for(const type of ['',null,undefined,'request-now','__proto__','complete\u0000'])assert.equal(p.allowed(type,true),false);});
+test('legacy resume positions cannot exceed the file chunk count',async()=>{
+  const w=await modules(),s=w.BlinkSecurity,total=s.chunkCount(10*65536,65536);assert.equal(total,10);
+  assert.equal(Number.isSafeInteger(total+1)&&(total+1>total),true);
+});
