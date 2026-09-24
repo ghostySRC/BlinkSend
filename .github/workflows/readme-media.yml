@@ -7,19 +7,23 @@ permissions:
   contents: write
 
 jobs:
-  render:
+  capture:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.ref_name }}
-      - uses: actions/setup-python@v5
+          ref: \${{ github.ref_name }}
+      - uses: actions/setup-node@v4
         with:
-          python-version: '3.12'
-      - run: python -m pip install --disable-pip-version-check pillow==11.3.0
-      - run: python scripts/generate-readme-media.py
-      - name: Commit refreshed media
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - run: npm install --no-save --package-lock=false playwright@1.55.0
+      - run: npx playwright install --with-deps chromium
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - run: node scripts/capture-readme-media.mjs
+      - name: Commit real browser captures
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -28,7 +32,7 @@ jobs:
             echo "README media already current."
             exit 0
           fi
-          git commit -m "Refresh README visuals for v0.2.0"
-          git fetch origin "${GITHUB_REF_NAME}"
-          git rebase "origin/${GITHUB_REF_NAME}"
-          git push origin HEAD:"${GITHUB_REF_NAME}"
+          git commit -m "Capture real BlinkSend README media"
+          git fetch origin "\${GITHUB_REF_NAME}"
+          git rebase "origin/\${GITHUB_REF_NAME}"
+          git push origin HEAD:"\${GITHUB_REF_NAME}"
