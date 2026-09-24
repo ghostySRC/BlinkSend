@@ -1,12 +1,6 @@
 name: Refresh README media
 
 on:
-  push:
-    branches:
-      - v0.3/session-queue-diagnostics
-    paths:
-      - scripts/capture-readme-media.mjs
-      - .github/workflows/readme-media.yml
   workflow_dispatch:
 
 permissions:
