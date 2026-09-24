@@ -10,9 +10,9 @@ async function loadProtocol(){
 test('adaptive tuning stays browser-safe and scales buffer targets',async()=>{
   const p=await loadProtocol();
   const weak=p.chooseTuning({throughputBps:100e6,rttMs:20,deviceMemory:2,cores:2,maxMessageSize:262144});
-  assert.equal(weak.chunkSize,65536);assert.ok(weak.highWater>=8*1024*1024);
+  assert.equal(weak.chunkSize,65536);assert.ok(weak.highWater>=4*1024*1024);
   const fast=p.chooseTuning({throughputBps:100*1024*1024,rttMs:20,deviceMemory:8,cores:8,maxMessageSize:262144});
-  assert.equal(fast.chunkSize,262140);assert.ok(fast.highWater>=24*1024*1024);assert.ok(fast.receiveWindow>=32*1024*1024);
+  assert.equal(fast.chunkSize,262140);assert.ok(fast.highWater>=12*1024*1024);assert.ok(fast.receiveWindow>=32*1024*1024);
   const capped=p.chooseTuning({throughputBps:100*1024*1024,rttMs:20,deviceMemory:8,cores:8,maxMessageSize:65536});
   assert.ok(capped.chunkSize+4<=65536);
 });
@@ -64,7 +64,7 @@ test('unknown device memory uses a conservative receive window without slowing s
   const p=await loadProtocol();
   const t=p.chooseTuning({throughputBps:40*1024*1024,rttMs:25,deviceMemory:0,cores:6,maxMessageSize:262144});
   assert.equal(t.receiveWindow,16*1024*1024);
-  assert.ok(t.highWater>=16*1024*1024);
+  assert.ok(t.highWater>=8*1024*1024);
 });
 
 
@@ -72,7 +72,7 @@ test('same-LAN tuning opens the pipeline without bypassing SCTP limits',async()=
   const p=await loadProtocol();
   const t=p.chooseTuning({throughputBps:8*1024*1024,rttMs:5,deviceMemory:0,cores:6,maxMessageSize:262144,lan:true});
   assert.equal(t.chunkSize,192*1024);
-  assert.ok(t.highWater>=48*1024*1024);
+  assert.ok(t.highWater>=8*1024*1024);
   assert.ok(t.readAhead>=32*1024*1024);
   assert.ok(t.receiveWindow>=24*1024*1024);
   assert.ok(t.chunkSize+4<=262144);
@@ -89,4 +89,14 @@ test('receiver window grows from actual committed batch speed and shrinks when s
   slow=p.adaptReceiveWindow({current:slow.window,previousBps:slow.throughputBps,batchBytes:4*1024*1024,batchMs:2000});
   assert.ok(slow.window<32*1024*1024);
   assert.ok(slow.window>=8*1024*1024);
+});
+
+
+test('LAN mode does not overfill the browser RTCDataChannel queue',async()=>{
+  const p=await loadProtocol();
+  const safariLike=p.chooseTuning({throughputBps:30*1024*1024,rttMs:4,deviceMemory:0,cores:6,maxMessageSize:262144,lan:true});
+  const desktop=p.chooseTuning({throughputBps:60*1024*1024,rttMs:4,deviceMemory:8,cores:12,maxMessageSize:262144,lan:true});
+  assert.ok(safariLike.highWater<=8*1024*1024);
+  assert.ok(desktop.highWater<=16*1024*1024);
+  assert.ok(safariLike.receiveWindow>safariLike.highWater);
 });
