@@ -58,7 +58,7 @@
     "verifyHelp": "Make sure both screens show the same code.",
     "codesMatch": "Codes match",
     "verifyStatus": "Connected — verify the code",
-    "verified": "Device verified — ready to send",
+    "verified": "Device verified — connected",
     "verifiedReceived": "✓ Transfer complete — file verified.",
     "verifiedSent": "✓ Transfer complete — file verified by receiver.",
     "hashMismatch": "File verification failed. The received SHA-256 hash did not match.",
@@ -165,7 +165,7 @@
     "verifyHelp": "Kontrollera att båda skärmarna visar samma kod.",
     "codesMatch": "Koderna matchar",
     "verifyStatus": "Ansluten — verifiera koden",
-    "verified": "Enheten är verifierad — redo att skicka",
+    "verified": "Enheten är verifierad — ansluten",
     "verifiedReceived": "✓ Överföringen är klar — filen är verifierad.",
     "verifiedSent": "✓ Överföringen är klar — mottagaren verifierade filen.",
     "hashMismatch": "Filverifieringen misslyckades. SHA-256-hashen matchade inte.",
@@ -282,6 +282,7 @@
     mode = value;
     els['mode-picker'].hidden = true; els['receive-join'].hidden = true; els['transfer-workspace'].hidden = false;
     els['invite-card'].hidden = value !== 'send';
+    els['transfer-workspace'].classList.toggle('receive-mode', value === 'receive');
     els['send-controls'].hidden = value !== 'send'; els['receive-wait'].hidden = value !== 'receive';
     if (room) { try { sessionStorage.setItem(`blinksend-role:${room}`, value); } catch {} }
   }
@@ -436,7 +437,12 @@
     if (!window.BlinkStore || !active?.persistentHandle || !room) return;
     try { await BlinkStore.put({ id:sessionKey(), room, role:'receive', transferId:active.id, handle:active.persistentHandle, name:active.name, size:active.size, relativePath:active.relativePath, received:active.committedBytes || 0, nextChunk:Math.floor((active.committedBytes || 0)/chunkSize), batchId:incomingBatch?.id || null, batchName:incomingBatch?.name || null, batchRootHandle:incomingBatch?.rootHandle || null }); } catch {}
   }
+  async function persistBatchContext() {
+    if (!window.BlinkStore || !room || !incomingBatch?.rootHandle) return;
+    try { await BlinkStore.put({ id:`batch:${room}`, room, role:'receive-batch', batchId:incomingBatch.id, batchName:incomingBatch.name, batchRootHandle:incomingBatch.rootHandle }); } catch {}
+  }
   async function clearPersistent() { if (window.BlinkStore && room) { try { await BlinkStore.remove(sessionKey()); } catch {} } }
+  async function clearBatchContext() { if (window.BlinkStore && room) { try { await BlinkStore.remove(`batch:${room}`); } catch {} } }
   async function rebuildReceiveHasher(handle, bytes) {
     const file = await handle.getFile(); return hashPrefix(file, Math.min(bytes, file.size));
   }
@@ -496,7 +502,7 @@
     stopTransfer(message, false, true, vars);
     batchDone++;
     if (outgoing.length) setTimeout(sendNext, 0);
-    else { batchTotal = 0; batchDone = 0; outgoingBatch = null; clearPersistent(); }
+    else { if (outgoingBatch?.id && channel?.readyState === 'open') channel.send(JSON.stringify({type:'batch-complete',id:outgoingBatch.id})); batchTotal = 0; batchDone = 0; outgoingBatch = null; clearPersistent(); }
   }
   function enqueueEntries(entries, folderName = '') {
     if (!entries?.length || channel?.readyState !== 'open' || active || pending) return;
@@ -540,6 +546,7 @@
     }
     if (msg.type === 'batch-accept' && outgoingBatch?.id === msg.id) { sendNext(); return; }
     if (msg.type === 'batch-decline' && outgoingBatch?.id === msg.id) { outgoing=[]; outgoingBatch=null; batchTotal=0; batchDone=0; notice('declined'); return; }
+    if (msg.type === 'batch-complete' && incomingBatch?.id === msg.id) { incomingBatch=null; await clearBatchContext(); return; }
     if (msg.type === 'request') {
       if (active || pending || typeof msg.name !== 'string' || msg.name.length > 255 || !Number.isSafeInteger(msg.size) || msg.size < 0 || typeof msg.id !== 'string') { channel.send(JSON.stringify({ type: 'decline', id: msg.id })); return; }
       const safeName = msg.name.replace(/[\\/\x00-\x1f\x7f]/g, '_').trim() || 'download';
@@ -609,7 +616,7 @@
     const request = pending;
     let writer, opfs, persistentHandle;
     if (fromBatch && incomingBatch?.rootHandle) {
-      try { persistentHandle = await nestedFileHandle(incomingBatch.rootHandle, request.relativePath, request.name); writer = await persistentHandle.createWritable(); }
+      try { const parts=(request.relativePath || request.name).split('/').filter(Boolean); if (parts[0] === incomingBatch.name) parts.shift(); persistentHandle = await nestedFileHandle(incomingBatch.rootHandle, parts.join('/'), request.name); writer = await persistentHandle.createWritable(); }
       catch { notice('saveLocationFailed'); return; }
     } else if (window.showSaveFilePicker) {
       try { persistentHandle = await showSaveFilePicker({ suggestedName: request.name }); writer = await persistentHandle.createWritable(); }
@@ -636,6 +643,7 @@
         } catch (error) { if (error.name === 'AbortError') return; notice('saveLocationFailed'); return; }
       }
       incomingBatch = { id:request.id, name:request.name, rootHandle, accepted:true };
+      await persistBatchContext();
       pending = null; els.incoming.hidden = true; channel.send(JSON.stringify({ type:'batch-accept', id:request.id })); status('verified', true); return;
     }
     await acceptPendingFile(false);
@@ -696,6 +704,9 @@
     if (!window.BlinkStore || !room) return;
     try {
       const sessions = await BlinkStore.findRoom(room); resumeSession = sessions[0] || null;
+      const batchContext = sessions.find(x => x.role === 'receive-batch');
+      if (batchContext?.batchRootHandle) incomingBatch = { id:batchContext.batchId, name:batchContext.batchName, rootHandle:batchContext.batchRootHandle, accepted:true };
+      resumeSession = sessions.find(x => x.role === 'send' || x.role === 'receive') || null;
       if (resumeSession) { els['resume-detail'].textContent = `${resumeSession.relativePath || resumeSession.name || 'Transfer'} · ${format(resumeSession.size || 0)}`; els['resume-card'].hidden = false; }
     } catch {}
   }
@@ -724,7 +735,7 @@
     els['resume-card'].hidden=true; resumeSession=null;
   }
   els['resume-transfer'].onclick = restoreSession;
-  els['discard-resume'].onclick = async () => { await clearPersistent(); resumeSession=null; els['resume-card'].hidden=true; };
+  els['discard-resume'].onclick = async () => { await clearPersistent(); await clearBatchContext(); resumeSession=null; incomingBatch=null; els['resume-card'].hidden=true; };
   async function initMode() {
     if (room) {
       let role='receive'; try { role=sessionStorage.getItem(`blinksend-role:${room}`) || 'receive'; } catch {}
