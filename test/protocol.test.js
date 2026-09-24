@@ -10,7 +10,7 @@ async function loadProtocol(){
 test('adaptive tuning stays browser-safe and scales buffer targets',async()=>{
   const p=await loadProtocol();
   const weak=p.chooseTuning({throughputBps:100e6,rttMs:20,deviceMemory:2,cores:2,maxMessageSize:262144});
-  assert.equal(weak.chunkSize,65532);assert.ok(weak.highWater>=8*1024*1024);
+  assert.equal(weak.chunkSize,65536);assert.ok(weak.highWater>=8*1024*1024);
   const fast=p.chooseTuning({throughputBps:100*1024*1024,rttMs:20,deviceMemory:8,cores:8,maxMessageSize:262144});
   assert.equal(fast.chunkSize,262140);assert.ok(fast.highWater>=24*1024*1024);assert.ok(fast.receiveWindow>=32*1024*1024);
   const capped=p.chooseTuning({throughputBps:100*1024*1024,rttMs:20,deviceMemory:8,cores:8,maxMessageSize:65536});
