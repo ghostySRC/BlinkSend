@@ -3,7 +3,7 @@
 ## 0.4.0-beta.4 — sustained multi-gigabyte transfer stability
 
 ### Throughput and stability
-- Optimize the streaming SHA-256 hot path to process full 64-byte blocks directly from existing file buffers instead of copying every block through the small remainder buffer.
+- Optimize the streaming SHA-256 hot path to process full 64-byte blocks directly from existing file buffers, avoid per-block typed-array views, and eliminate the temporary eight-word array created after every compression block.
 - Add receiver-credit flow control: the destination periodically reports bytes actually committed/processed and a bounded receive window, so the sender cannot flood a slower browser even when the WebRTC send buffer still looks healthy.
 - Use adaptive 8–48 MiB receiver windows with frequent credit acknowledgements to keep fast links full without allowing unbounded receive backlog.
 - Expand fast-link payload selection to 256 KiB when the negotiated SCTP limit safely permits it.
