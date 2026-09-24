@@ -8,7 +8,7 @@
 - Transfer incoming ArrayBuffers to the OPFS worker instead of cloning each payload before disk writes, reducing copies and garbage-collection pressure.
 - Keep multi-megabyte write batching, receiver-credit flow control, resume checkpoints, and SHA-256 verification while using synchronous worker-side file access.
 - Restore worker-side hash state from the persisted file prefix during reload resume; sparse missing-range resumes fall back to a full worker-side final hash scan.
-- Expand the 224 MiB streamed-file E2E path to WebKit as well as Chromium so the browser matrix exercises OPFS above the 200 MiB memory threshold on both engines.
+- Keep the 224 MiB streamed OPFS E2E in Chromium. Playwright's Linux WebKit build does not expose OPFS in this test environment, so WebKit retains the 64 MiB sustained transfer test; real Safari uses the worker path when OPFS and sync access handles are available.
 - Cache the receive worker in the PWA shell and bump the shell cache to v5.
 
 ## 0.4.0-beta.4 — sustained multi-gigabyte transfer stability
