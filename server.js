@@ -43,9 +43,9 @@ function makePairCode(){
   return code;
 }
 function issuePairCode(roomId){
-  prunePairCodes();const room=rooms.get(roomId);if(!room)return '';
-  const current=room.pairCode&&pairCodes.get(room.pairCode);if(current&&current.expires>Date.now())return room.pairCode;
-  const code=makePairCode(),expires=Date.now()+10*60_000;pairCodes.set(code,{room:roomId,expires});room.pairCode=code;return code;
+  prunePairCodes();const room=rooms.get(roomId);if(!room)return {code:'',expires:0};
+  const current=room.pairCode&&pairCodes.get(room.pairCode);if(current&&current.expires>Date.now())return {code:room.pairCode,expires:current.expires};
+  const code=makePairCode(),expires=Date.now()+10*60_000;pairCodes.set(code,{room:roomId,expires});room.pairCode=code;return {code,expires};
 }
 function removePairCode(room){if(room?.pairCode)pairCodes.delete(room.pairCode);}
 function metricsText(){

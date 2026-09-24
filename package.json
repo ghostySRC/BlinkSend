@@ -6,9 +6,9 @@
   "description": "Direct browser-to-browser file sharing",
   "scripts": {
     "start": "node server.js",
-    "test": "node --test",
+    "test": "node scripts/run-tests.mjs",
     "bench": "node scripts/benchmark.mjs",
-    "loadtest": "node scripts/load-test.mjs"
+    "loadtest": "node scripts/load-benchmark.mjs"
   },
   "engines": {
     "node": ">=20"
