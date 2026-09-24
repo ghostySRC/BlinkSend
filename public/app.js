@@ -1,6 +1,6 @@
 (() => {
   const $ = id => document.getElementById(id);
-  const els = Object.fromEntries(['qr','copy','new-room','status','status-dot','file','folder','choose-folder','share-text','send-text','received-text','received-link','copy-received','drop','transfer-info','file-name','file-size','progress','progress-text','cancel','queue-status','notice','incoming','incoming-detail','save-note','accept','decline'].map(id => [id, $(id)]));
+  const els = Object.fromEntries(['qr','copy','new-room','status','status-dot','verify-peer','verify-code','verify-match','file','folder','choose-folder','share-text','send-text','received-text','received-link','copy-received','drop','transfer-info','file-name','file-size','progress','progress-text','cancel','queue-status','notice','incoming','incoming-detail','save-note','accept','decline'].map(id => [id, $(id)]));
   const translations = {
   "en": {
     "language": "Language",
@@ -33,6 +33,16 @@
     "incomingFile": "Incoming file",
     "decline": "Decline",
     "saveFile": "Save file",
+    "verifyPeer": "Verify device",
+    "verifyHelp": "Make sure both screens show the same code.",
+    "codesMatch": "Codes match",
+    "verifyStatus": "Connected — verify the code",
+    "verified": "Device verified — ready to send",
+    "verifiedReceived": "✓ Transfer complete — file verified.",
+    "verifiedSent": "✓ Transfer complete — file verified by receiver.",
+    "hashMismatch": "File verification failed. The received SHA-256 hash did not match.",
+    "resuming": "Connection restored — resuming transfer…",
+    "paused": "Connection interrupted — keeping transfer ready to resume…",
     "ready": "Connected — ready to send",
     "readyRelay": "Connected via relay — ready to send",
     "readyDirect": "Connected directly — ready to send",
@@ -109,6 +119,16 @@
     "incomingFile": "Inkommande fil",
     "decline": "Neka",
     "saveFile": "Spara fil",
+    "verifyPeer": "Verifiera enhet",
+    "verifyHelp": "Kontrollera att båda skärmarna visar samma kod.",
+    "codesMatch": "Koderna matchar",
+    "verifyStatus": "Ansluten — verifiera koden",
+    "verified": "Enheten är verifierad — redo att skicka",
+    "verifiedReceived": "✓ Överföringen är klar — filen är verifierad.",
+    "verifiedSent": "✓ Överföringen är klar — mottagaren verifierade filen.",
+    "hashMismatch": "Filverifieringen misslyckades. SHA-256-hashen matchade inte.",
+    "resuming": "Anslutningen är tillbaka — fortsätter överföringen…",
+    "paused": "Anslutningen bröts — överföringen sparas för återupptagning…",
     "ready": "Ansluten — redo att skicka",
     "readyRelay": "Ansluten via relä — redo att skicka",
     "readyDirect": "Direktansluten — redo att skicka",
@@ -206,8 +226,8 @@
   const maxMemoryFile = 200 * 1024 * 1024;
   const supportsOpfs = !!navigator.storage?.getDirectory;
   const format = bytes => bytes < 1024 ? `${bytes} B` : bytes < 1048576 ? `${(bytes / 1024).toFixed(1)} KB` : bytes < 1073741824 ? `${(bytes / 1048576).toFixed(1)} MB` : `${(bytes / 1073741824).toFixed(2)} GB`;
-  let socket, pc, channel, pending, active, incomingQueue = Promise.resolve(), signalQueue = Promise.resolve(), connectTimer;
-  let readyLabel = 'ready';
+  let socket, pc, channel, pending, active, incomingQueue = Promise.resolve(), signalQueue = Promise.resolve(), connectTimer, iceToken = '';
+  let readyLabel = 'ready', peerVerified = false, localVerified = false, remoteVerified = false, verificationCode = '';
   let outgoing = [], batchTotal = 0, batchDone = 0;
   let room = location.hash.slice(1).toLowerCase();
   if (!/^[a-f0-9]{32}$/.test(room)) { room = [...crypto.getRandomValues(new Uint8Array(16))].map(v => v.toString(16).padStart(2,'0')).join(''); history.replaceState(null, '', `${location.pathname}${location.search}#${room}`); }
@@ -217,21 +237,42 @@
     lastStatus = { key, ready, vars };
     els.status.textContent = tr(key, vars);
     els['status-dot'].classList.toggle('ready', ready);
-    els.file.disabled = !ready || !!active || !!pending;
+    const unlocked = ready && peerVerified;
+    els.file.disabled = !unlocked || !!active || !!pending;
     els.folder.disabled = els.file.disabled;
     els['choose-folder'].disabled = els.file.disabled;
-    els['share-text'].disabled = !ready;
-    els['send-text'].disabled = !ready;
+    els['share-text'].disabled = !unlocked;
+    els['send-text'].disabled = !unlocked;
     els.drop.classList.toggle('disabled', els.file.disabled);
   }
   function notice(key = '', vars = {}) { lastNotice = { key, vars }; els.notice.textContent = key ? tr(key, vars) : ''; }
   function signal(type, payload) { if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type, payload })); }
+  function pauseTransfer() {
+    if (!active) return;
+    active.paused = true; active.stage = 'paused'; progressState = null; renderTransfer();
+  }
   function resetPeer() {
     clearTimeout(connectTimer);
-    if (active) stopTransfer('connectionLost', false);
+    pauseTransfer();
     pending = null; els.incoming.hidden = true;
+    peerVerified = false; localVerified = false; remoteVerified = false; verificationCode = ''; els['verify-peer'].hidden = true;
     channel?.close(); pc?.close(); channel = null; pc = null;
     status('waiting');
+  }
+  function fingerprint(desc) {
+    const match = desc?.sdp?.match(/^a=fingerprint:sha-256\s+([A-Fa-f0-9:]+)/mi);
+    return match ? match[1].replace(/:/g, '').toLowerCase() : '';
+  }
+  async function showVerificationCode() {
+    const local = fingerprint(pc?.localDescription), remote = fingerprint(pc?.remoteDescription);
+    if (!local || !remote) return;
+    const material = [local, remote].sort().join(':');
+    const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(material)));
+    const value = (((digest[0] * 0x1000000) + (digest[1] << 16) + (digest[2] << 8) + digest[3]) >>> 0) % 1000000;
+    const code = String(value).padStart(6, '0'), display = `${code.slice(0,3)} ${code.slice(3)}`;
+    if (display === verificationCode && peerVerified) return;
+    verificationCode = display; els['verify-code'].textContent = display; els['verify-match'].disabled = false;
+    els['verify-peer'].hidden = false; peerVerified = false; localVerified = false; remoteVerified = false; status('verifyStatus', false);
   }
   async function connectionPath() {
     const current = pc;
@@ -246,14 +287,14 @@
       const local = stats.get(pair?.localCandidateId), remote = stats.get(pair?.remoteCandidateId);
       const relayed = local?.candidateType === 'relay' || remote?.candidateType === 'relay';
       readyLabel = !pair ? 'ready' : relayed ? 'readyRelay' : 'readyDirect';
-      status(readyLabel, true);
-    } catch { if (pc === current && channel?.readyState === 'open') status(readyLabel, true); }
+      await showVerificationCode();
+    } catch { if (pc === current && channel?.readyState === 'open') await showVerificationCode(); }
   }
   async function makePeer() {
     pc?.close();
     clearTimeout(connectTimer);
     let iceServers = [{ urls: 'stun:stun.l.google.com:19302' }];
-    try { const response = await fetch('/ice', { signal: AbortSignal.timeout(5000) }); if (response.ok) iceServers = (await response.json()).iceServers; } catch { /* Default STUN is sufficient for many networks. */ }
+    try { const response = await fetch(`/ice?token=${encodeURIComponent(iceToken)}`, { signal: AbortSignal.timeout(5000) }); if (response.ok) iceServers = (await response.json()).iceServers; } catch { /* Default STUN is sufficient for many networks. */ }
     pc = new RTCPeerConnection({ iceServers });
     const current = pc;
     connectTimer = setTimeout(() => {
@@ -265,7 +306,7 @@
     pc.onicecandidate = e => { if (e.candidate) signal('candidate', e.candidate.toJSON()); };
     pc.onconnectionstatechange = () => {
       if (pc.connectionState === 'connected' && channel?.readyState === 'open') connectionPath();
-      if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') { if (active) stopTransfer('connectionLost', false); status('interrupted'); }
+      if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') { pauseTransfer(); status(active ? 'paused' : 'interrupted'); }
     };
     pc.ondatachannel = e => setupChannel(e.channel);
   }
@@ -273,8 +314,11 @@
     channel = ch;
     ch.binaryType = 'arraybuffer';
     ch.bufferedAmountLowThreshold = 2 * 1024 * 1024;
-    ch.onopen = () => { clearTimeout(connectTimer); connectionPath(); notice(); };
-    ch.onclose = () => { if (active) stopTransfer('connectionLost', false); status('peerLeft'); };
+    ch.onopen = () => {
+      clearTimeout(connectTimer); connectionPath(); notice();
+      if (active) { active.paused = true; active.stage = 'resuming'; renderTransfer(); }
+    };
+    ch.onclose = () => { pauseTransfer(); status(active ? 'paused' : 'peerLeft'); };
     ch.onmessage = e => {
       incomingQueue = incomingQueue.then(() => typeof e.data === 'string' ? control(e.data) : receiveChunk(e.data)).catch(() => {
         if (active) stopTransfer('transferFailed');
@@ -287,7 +331,7 @@
     socket.onmessage = e => { signalQueue = signalQueue.then(async () => {
       let msg; try { msg = JSON.parse(e.data); } catch { return; }
       try {
-        if (msg.type === 'joined') status(msg.count === 1 ? 'waiting' : 'connecting');
+        if (msg.type === 'joined') { iceToken = typeof msg.iceToken === 'string' ? msg.iceToken : ''; status(msg.count === 1 ? 'waiting' : 'connecting'); }
         if (msg.type === 'full') { status('roomFull'); notice('roomFullHelp'); }
         if (msg.type === 'peer-left') resetPeer();
         if (msg.type === 'peer-joined') { await makePeer(); setupChannel(pc.createDataChannel('files', { ordered: true })); await pc.setLocalDescription(await pc.createOffer()); signal('offer', pc.localDescription.toJSON()); status('connecting'); }
@@ -324,11 +368,32 @@
     status(channel?.readyState === 'open' ? readyLabel : 'waiting', channel?.readyState === 'open');
     notice(message, vars);
   }
+  async function hashPrefix(file, bytes) {
+    const hasher = new BlinkSHA256(); let offset = 0;
+    while (offset < bytes) { const part = await file.slice(offset, Math.min(bytes, offset + chunkSize)).arrayBuffer(); hasher.update(part); offset += part.byteLength; }
+    return hasher;
+  }
+  function packChunk(seq, part) {
+    const payload = new Uint8Array(part), packet = new Uint8Array(payload.length + 4);
+    new DataView(packet.buffer).setUint32(0, seq); packet.set(payload, 4); return packet.buffer;
+  }
+  function maybeFinishVerification() {
+    if (!localVerified || !remoteVerified || peerVerified) return;
+    peerVerified = true; els['verify-peer'].hidden = true; status('verified', true);
+    if (active?.direction === 'receive' && active.paused && channel?.readyState === 'open') channel.send(JSON.stringify({ type: 'resume', id: active.id, nextChunk: active.nextChunk || 0, size: active.size }));
+    if (active?.direction === 'send' && Number.isSafeInteger(active.pendingResume)) { const next = active.pendingResume; delete active.pendingResume; resumeOutgoing(next); }
+  }
+  async function resumeOutgoing(nextChunk) {
+    if (!active || active.direction !== 'send' || !Number.isSafeInteger(nextChunk) || nextChunk < 0) return;
+    const offset = Math.min(active.file.size, nextChunk * chunkSize); active.sent = offset; active.nextChunk = nextChunk;
+    active.hasher = await hashPrefix(active.file, offset); active.paused = false; active.stage = 'resuming';
+    progress(offset, active.file.size, active.started, 'sending'); pump(active.id);
+  }
   async function sendFile(entry) {
     if (!entry || channel?.readyState !== 'open' || active || pending) return;
     const file = entry.file || entry;
     const relativePath = entry.relativePath || file.webkitRelativePath || '';
-    const id = crypto.randomUUID(); active = { id, direction: 'send', file, relativePath, sent: 0, started: Date.now(), accepted: false };
+    const id = crypto.randomUUID(); active = { id, direction: 'send', file, relativePath, sent: 0, nextChunk: 0, hasher: new BlinkSHA256(), started: Date.now(), accepted: false, paused: false };
     showTransfer(relativePath || file.name, file.size);
     channel.send(JSON.stringify({ type: 'request', id, name: file.name, relativePath, size: file.size }));
     active.stage = 'waitingAcceptance'; renderTransfer();
@@ -354,16 +419,16 @@
     try {
       const file = active?.file;
       if (!file || active.id !== id) return;
-      while (active?.id === id && active.sent < file.size) {
+      while (active?.id === id && !active.paused && active.sent < file.size) {
         if (channel.readyState !== 'open') throw new Error('Connection closed');
         if (channel.bufferedAmount > 8 * 1024 * 1024) { await new Promise(resolve => { channel.addEventListener('bufferedamountlow', resolve, { once: true }); }); continue; }
-        const part = await file.slice(active.sent, active.sent + chunkSize).arrayBuffer();
-        if (active?.id !== id) return;
-        channel.send(part); active.sent += part.byteLength;
+        const seq = active.nextChunk; const part = await file.slice(active.sent, active.sent + chunkSize).arrayBuffer();
+        if (active?.id !== id || active.paused) return;
+        active.hasher.update(part); channel.send(packChunk(seq, part)); active.sent += part.byteLength; active.nextChunk++;
         progress(active.sent, file.size, active.started, 'sending');
       }
-      if (active?.id === id) { channel.send(JSON.stringify({ type: 'complete', id })); active.stage = 'finishing'; progressState = null; renderTransfer(); }
-    } catch { if (active?.id === id) stopTransfer('transferFailed'); }
+      if (active?.id === id && !active.paused) { channel.send(JSON.stringify({ type: 'complete', id, sha256: active.hasher.hex() })); active.stage = 'finishing'; progressState = null; renderTransfer(); }
+    } catch { if (active?.id === id) { pauseTransfer(); status('paused'); } }
   }
   async function control(raw) {
     let msg; try { msg = JSON.parse(raw); } catch { return; }
@@ -378,21 +443,29 @@
       els.incoming.hidden = false; els.accept.focus();
       status('incomingPrompt');
     }
-    if (msg.type === 'accept' && active?.id === msg.id && active.direction === 'send') { active.accepted = true; pump(msg.id); }
+    if (msg.type === 'accept' && active?.id === msg.id && active.direction === 'send') { active.accepted = true; active.paused = false; pump(msg.id); }
+    if (msg.type === 'resume' && active?.id === msg.id && active.direction === 'send' && Number.isSafeInteger(msg.nextChunk) && msg.nextChunk >= 0) {
+      if (!peerVerified) active.pendingResume = msg.nextChunk; else await resumeOutgoing(msg.nextChunk);
+    }
+    if (msg.type === 'verify-confirm') { remoteVerified = true; maybeFinishVerification(); }
     if (msg.type === 'decline' && active?.id === msg.id && active.direction === 'send') finishOutgoing('declined');
     if (msg.type === 'cancel') { if (pending?.id === msg.id) { pending = null; els.incoming.hidden = true; status(readyLabel, true); } if (active?.id === msg.id) { if (active.direction === 'send') finishOutgoing('peerCancelled'); else stopTransfer('peerCancelled', false); } }
     if (msg.type === 'complete' && active?.id === msg.id && active.direction === 'receive') {
       if (active.received !== active.size) { stopTransfer('incomplete'); return; }
+      const localHash = active.hasher.hex(); if (typeof msg.sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(msg.sha256) || localHash !== msg.sha256) { stopTransfer('hashMismatch'); return; }
       try {
         if (active.writer) await active.writer.close();
         if (active.opfs) {
           const file = await active.opfs.handle.getFile(); const url = URL.createObjectURL(file); const anchor = document.createElement('a'); anchor.href = url; anchor.download = active.name; document.body.append(anchor); anchor.click(); anchor.remove(); setTimeout(() => URL.revokeObjectURL(url), 60_000); active.opfs.root.removeEntry(active.opfs.tempName).catch(() => {});
         } else if (!active.writer) { const url = URL.createObjectURL(new Blob(active.chunks)); const anchor = document.createElement('a'); anchor.href = url; anchor.download = active.name; document.body.append(anchor); anchor.click(); anchor.remove(); setTimeout(() => URL.revokeObjectURL(url), 60_000); }
-        channel.send(JSON.stringify({ type: 'saved', id: msg.id }));
-        stopTransfer('received', false);
+        channel.send(JSON.stringify({ type: 'saved', id: msg.id, sha256: localHash }));
+        stopTransfer('verifiedReceived', false);
       } catch { stopTransfer('saveFailed'); }
     }
-    if (msg.type === 'saved' && active?.id === msg.id && active.direction === 'send') finishOutgoing(batchTotal > 1 ? 'sentBatch' : 'sent', { current: batchDone + 1, total: batchTotal });
+    if (msg.type === 'saved' && active?.id === msg.id && active.direction === 'send') {
+      const sentHash = active.hasher.hex(); if (msg.sha256 !== sentHash) { stopTransfer('hashMismatch', false); return; }
+      finishOutgoing('verifiedSent', { current: batchDone + 1, total: batchTotal });
+    }
     if (msg.type === 'text' && typeof msg.text === 'string' && msg.text.length <= 4096) {
       try {
         const url = new URL(msg.text);
@@ -403,10 +476,15 @@
   }
   async function receiveChunk(data) {
     if (!active || active.direction !== 'receive') return;
-    if (active.received + data.byteLength > active.size) { stopTransfer('excess'); return; }
+    const packet = new Uint8Array(data); if (packet.byteLength < 4) return;
+    const seq = new DataView(packet.buffer, packet.byteOffset, packet.byteLength).getUint32(0), payload = packet.subarray(4);
+    if (seq < active.nextChunk) return;
+    if (seq !== active.nextChunk) { if (channel?.readyState === 'open') channel.send(JSON.stringify({ type: 'resume', id: active.id, nextChunk: active.nextChunk, size: active.size })); return; }
+    if (active.received + payload.byteLength > active.size) { stopTransfer('excess'); return; }
     try {
-      if (active.writer) await active.writer.write(data); else active.chunks.push(data);
-      active.received += data.byteLength;
+      active.hasher.update(payload);
+      if (active.writer) await active.writer.write(payload); else active.chunks.push(payload.slice());
+      active.received += payload.byteLength; active.nextChunk++;
       progress(active.received, active.size, active.started, 'receiving');
     } catch { stopTransfer('writeFailed'); }
   }
@@ -423,11 +501,12 @@
     }
     if (pending?.id !== request.id) { writer?.abort(); return; }
     pending = null; els.incoming.hidden = true;
-    active = { ...request, direction: 'receive', received: 0, chunks: writer ? null : [], writer, opfs, started: Date.now() };
+    active = { ...request, direction: 'receive', received: 0, nextChunk: 0, hasher: new BlinkSHA256(), chunks: writer ? null : [], writer, opfs, started: Date.now(), paused: false };
     showTransfer(request.name, request.size);
     channel.send(JSON.stringify({ type: 'accept', id: request.id }));
   };
-  els.decline.onclick = () => { if (pending) channel.send(JSON.stringify({ type: 'decline', id: pending.id })); pending = null; els.incoming.hidden = true; status(readyLabel, true); };
+  els.decline.onclick = () => { if (pending) channel.send(JSON.stringify({ type: 'decline', id: pending.id })); pending = null; els.incoming.hidden = true; status(peerVerified ? 'verified' : 'verifyStatus', peerVerified); };
+  els['verify-match'].onclick = () => { if (localVerified || channel?.readyState !== 'open') return; localVerified = true; els['verify-match'].disabled = true; channel.send(JSON.stringify({ type: 'verify-confirm' })); maybeFinishVerification(); };
   els.cancel.onclick = () => stopTransfer('cancelled');
   els.file.onchange = () => enqueueFiles(els.file.files);
   els['choose-folder'].onclick = () => els.folder.click();
