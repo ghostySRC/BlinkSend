@@ -3,30 +3,30 @@
 <p align="center">A self-hosted file transfer tool for two browsers.</p>
 <p align="center"><a href="#quick-start">Quick start</a> · <a href="#see-it-in-action">See it in action</a> · <a href="#deploy-your-own-instance">Self-host</a> · <a href="#how-it-works">How it works</a></p>
 
-<p align="center"><img src="docs/media/desktop.webp" width="900" alt="BlinkSend desktop interface with a QR invite and file transfer panel"></p>
-<p align="center"><sub>Open a room, invite another device, and choose files to send.</sub></p>
+<p align="center"><img src="docs/media/desktop.webp" width="900" alt="BlinkSend desktop interface in light mode, with the language and theme controls, QR invite, and file transfer panel"></p>
+<p align="center"><sub>Desktop · English · Light mode</sub></p>
 
-> **Early release:** browser transfers across real devices and networks still need field testing. There is no public hosted instance yet. The GIFs below show the actual interface in a local browser demonstration with a simulated data channel; they do not claim a verified network transfer.
+> **Early release:** transfers across real devices and networks still need field testing. There is no public hosted instance yet. The GIFs below are staged captures of the current interface; they show the transfer states, not a verified transfer between devices.
 
 ## See it in action
 
 ### Pair two devices
 
-<p align="center"><img src="docs/media/pairing.gif" width="820" alt="Animated BlinkSend interface changing from waiting for a device to connected"></p>
+<p align="center"><img src="docs/media/pairing.gif" width="760" alt="BlinkSend pairing demonstration with the current header, changing from waiting to connecting to connected"></p>
 
 Open the room link on a second device or scan the QR code. The connection indicator changes when both browsers join.
 
-### Accept and send a batch
+### Receive files
 
-<p align="center"><img src="docs/media/transfer.gif" width="820" alt="Animated BlinkSend interface showing an incoming file, transfer progress, a second file and completion"></p>
+<p align="center"><img src="docs/media/transfer.gif" width="760" alt="BlinkSend transfer demonstration showing an incoming file, receive progress, a second incoming file, and completion"></p>
 
-Select multiple files, accept each one on the other device, and follow progress and speed in the browser.
+Select multiple files on the sender, accept each one on the receiver, and follow progress and speed in the browser.
 
-### On a phone
+### Language and appearance
 
-<p align="center"><img src="docs/media/mobile.webp" width="300" alt="BlinkSend mobile layout with a QR invite and transfer controls"></p>
+<table align="center"><tr><th>English · Light mode</th><th>Svenska · Mörkt läge</th></tr><tr><td><img src="docs/media/mobile.webp" width="300" alt="BlinkSend on a phone in English and light mode"></td><td><img src="docs/media/mobile-dark.webp" width="300" alt="BlinkSend on a phone in Swedish and dark mode"></td></tr></table>
 
-The same page adapts to smaller screens. A public HTTPS deployment is required to connect a phone to a computer outside this local preview.
+Use the language selector and theme button in the header. BlinkSend remembers both choices on each device; before you choose a theme, it follows your system preference. The same interface adapts to smaller screens. A public HTTPS deployment is required to connect a phone to a computer outside this local preview.
 
 ## Features
 
