@@ -31,9 +31,11 @@ Use the language selector and theme button in the header. BlinkSend remembers bo
 ## Features
 
 - Computer ↔ computer and phone ↔ computer sharing through an invite link or QR code.
-- Send one file or select several files as a batch. The receiver accepts or declines each file.
+- Send one file, several files, or choose an entire folder as a batch. Folder entries keep their relative path metadata while transferring.
 - Direct encrypted browser-to-browser transfer when the network allows it; optional TURN relay support for harder networks.
 - Transfer progress, average speed, cancellation, connection status, and clear errors when pairing fails.
+- Send an `http://` or `https://` link directly to the paired device without creating a file first.
+- Higher-throughput WebRTC sending with 64 KiB chunks and a larger buffered send window for fast local networks.
 - English and Swedish interface, plus light and dark modes. Your choices are saved on each device; the initial theme follows your system setting.
 - Large files stream to disk on browsers with the File System Access API. A bounded memory download is used elsewhere.
 - Two participants per room, random 128-bit room links, no accounts, and no server-side file storage.
@@ -78,9 +80,10 @@ The recipient must accept each file. Batches are sent sequentially; declining on
 | Receiving browser capability | Save behavior | File limit in BlinkSend |
 | --- | --- | --- |
 | Supports `showSaveFilePicker` | Writes chunks to the chosen file as they arrive | No app-imposed size limit; disk space and browser limits still apply |
-| Does not support `showSaveFilePicker` | Buffers the file in memory, then starts a download | 200 MB per file |
+| No save picker, but supports Origin Private File System (OPFS) | Streams large files into temporary browser-managed disk storage, then starts the download | No app-imposed size limit; available storage/quota and browser limits still apply |
+| No save picker and no OPFS | Buffers the file in memory, then starts a download | 200 MB per file |
 
-This fallback is especially relevant to phones and browsers that lack the File System Access API. Transfer speed depends on the sender's upload connection, the receiver's download connection, Wi-Fi quality, browser performance, and whether a relay is required. BlinkSend does not promise a fixed speed.
+The 200 MB memory fallback now applies only when the browser exposes neither a save-file picker nor OPFS. Transfer speed depends on the sender's upload connection, the receiver's download connection, Wi-Fi quality, browser performance, and whether a relay is required. BlinkSend uses 64 KiB chunks and allows a larger amount of queued WebRTC data to better utilize fast connections, but it does not promise a fixed speed.
 
 ## Deploy your own instance
 
@@ -129,7 +132,7 @@ BlinkSend is currently designed for trusted, small-scale deployment. A public in
 | Phone cannot open the invite | Use a public HTTPS URL; `localhost` on your computer refers only to that computer. |
 | Room says “Room full” | Two connections are already present. Close an old tab or create a new room. |
 | Devices stay at “Connecting” | Refresh both pages. Try the same Wi-Fi; for restrictive networks, configure TURN. |
-| Incoming file cannot be accepted | The browser's memory download limit is 200 MB. Receive it in a browser that supports disk streaming. |
+| Incoming file cannot be accepted | The browser supports neither direct disk streaming nor OPFS and the file is over the 200 MB memory fallback limit. Try a newer browser. |
 | A transfer stops midway | Keep both tabs open and networks stable. The current version cannot resume a partial file. |
 | Reverse proxy loads the page but pairing fails | Ensure `/signal` supports WebSocket upgrades and the page is served over HTTPS. |
 

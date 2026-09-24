@@ -25,12 +25,12 @@
         <section class="card transfer" aria-labelledby="transfer-title">
           <div class="section-heading"><h2 id="transfer-title" data-i18n="files">Files</h2><p data-i18n="direction">Send files in either direction once connected.</p></div>
           <div class="connection"><span id="status-dot" class="status-dot" aria-hidden="true"></span><span id="status" role="status" data-i18n="connectingRoom">Connecting to room…</span></div>
-          <label class="drop" id="drop"><input id="file" type="file" multiple disabled><span class="upload-icon" aria-hidden="true">↑</span><strong data-i18n="chooseFiles">Choose files</strong><span data-i18n="dropHere">or drop them here on a computer</span></label>
+          <label class="drop" id="drop"><input id="file" type="file" multiple disabled><span class="upload-icon" aria-hidden="true">↑</span><strong data-i18n="chooseFiles">Choose files</strong><span data-i18n="dropHere">or drop them here on a computer</span></label><input id="folder" class="visually-hidden" type="file" webkitdirectory directory multiple disabled><div class="transfer-actions"><button id="choose-folder" type="button" class="button secondary" disabled data-i18n="chooseFolder">Choose folder</button></div><div class="share-row"><input id="share-text" type="url" inputmode="url" autocomplete="off" placeholder="Paste a link" data-i18n-placeholder="linkPlaceholder" disabled><button id="send-text" type="button" class="button secondary" disabled data-i18n="sendLink">Send link</button></div>
           <div id="transfer-info" class="transfer-info" hidden><div class="file-row"><span id="file-name"></span><span id="file-size"></span></div><progress id="progress" max="100" value="0" aria-label="Transfer progress" data-i18n-aria="transferProgress"></progress><div class="file-row muted"><span id="progress-text">Preparing…</span><button id="cancel" type="button" class="text-button" data-i18n="cancel">Cancel</button></div><p id="queue-status" class="queue-status" role="status" hidden></p></div>
           <p class="hint" data-i18n="keepOpen">Keep both tabs open until the transfer finishes.</p>
         </section>
       </div>
-      <p id="notice" class="notice" role="status" aria-live="polite"></p>
+      <p id="notice" class="notice" role="status" aria-live="polite"></p><div id="received-text" class="received-text" hidden><span data-i18n="receivedLink">Received link</span><a id="received-link" target="_blank" rel="noopener noreferrer"></a><button id="copy-received" type="button" class="text-button" data-i18n="copyLink">Copy link</button></div>
     </section>
     <footer data-i18n="footer">BlinkSend · Two devices per room</footer>
   </main>
