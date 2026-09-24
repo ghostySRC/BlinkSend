@@ -942,7 +942,7 @@
   els.decline.onclick = () => { if (pending) channel.send(JSON.stringify({ type: pending.type === 'batch' ? 'batch-decline' : 'decline', id: pending.id })); pending = null; els.incoming.hidden = true; status(peerVerified ? 'verified' : 'verifyStatus', peerVerified); };
   els['verify-match'].onclick = () => { if (localVerified || channel?.readyState !== 'open') return; localVerified = true; els['verify-match'].disabled = true; channel.send(JSON.stringify({ type: 'verify-confirm' })); maybeFinishVerification(); };
   els.cancel.onclick = () => stopTransfer('cancelled');
-  els.file.onchange = () => enqueueFiles(els.file.files);
+  els.file.onchange = () => { const files=[...els.file.files]; els.file.value=''; enqueueFiles(files); };
   els.drop.onclick = async e => {
     if (els.file.disabled || !window.showOpenFilePicker) return;
     e.preventDefault();
@@ -958,7 +958,7 @@
     try { const handle = await showDirectoryPicker({ mode:'read' }); const entries = await collectDirectory(handle, handle.name); enqueueEntries(entries, handle.name); }
     catch (error) { if (error.name !== 'AbortError') notice('saveLocationFailed'); }
   };
-  els.folder.onchange = () => { const files=[...els.folder.files]; const name=files[0]?.webkitRelativePath?.split('/')[0] || ''; enqueueEntries(files.map(file=>({file,relativePath:file.webkitRelativePath||''})), name); };
+  els.folder.onchange = () => { const files=[...els.folder.files]; els.folder.value=''; const name=files[0]?.webkitRelativePath?.split('/')[0] || ''; enqueueEntries(files.map(file=>({file,relativePath:file.webkitRelativePath||''})), name); };
   async function receiveTextValue(text){
     const bytes=new TextEncoder().encode(text).byteLength;if(bytes>maxTextBytes)return;
     els['received-content'].textContent=text;els['received-text'].hidden=false;let link='';
@@ -1091,7 +1091,7 @@
   els['send-another'].onclick=()=>{els['post-transfer'].hidden=true;setTransferBanner();els.drop.scrollIntoView({behavior:'smooth',block:'center'});};
   els['diagnostics-toggle'].onclick=()=>{const show=els['diagnostics-panel'].hidden;els['diagnostics-panel'].hidden=!show;els['diagnostics-toggle'].textContent=tr(show?'hideDiagnostics':'showDiagnostics');clearInterval(diagnosticsTimer);if(show){updateDiagnostics();diagnosticsTimer=setInterval(updateDiagnostics,1000);}};
   els['settings-toggle'].onclick=()=>{els['settings-panel'].hidden=!els['settings-panel'].hidden;if(!els['settings-panel'].hidden)renderHistory();};
-  els['settings-close'].onclick=()=>{els['settings-panel'].hidden=true;};
+  els['settings-close'].onclick=()=>{els['settings-panel'].hidden=true;clearInterval(diagnosticsTimer);diagnosticsTimer=0;};
   els['device-name'].value=deviceName;renderRecentPeers();updateDiagnostics();
   els['device-name'].onchange=()=>{deviceName=sanitizeDeviceName(els['device-name'].value)||'BlinkSend device';els['device-name'].value=deviceName;saveSetting('blinksend-device-name',deviceName);if(channel?.readyState==='open')channel.send(JSON.stringify({type:'hello',name:deviceName}));if(nearbyDiscovery)registerNearby();};
   els['notify-complete'].checked=completionFeedback;
