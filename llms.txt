@@ -1,0 +1,87 @@
+# BlinkSend
+
+> Fast, free, peer-to-peer file sharing between phones and computers. No account needed.
+
+Repository: https://github.com/ghostySRC/BlinkSend
+Default branch: main
+License: MIT
+Runtime: Node.js 20+, browser JavaScript, WebRTC data channels
+
+## What BlinkSend does
+
+BlinkSend transfers files directly between two browsers. A small Node.js server handles room signaling, QR generation, temporary ICE/TURN credentials, and static assets. File bytes normally travel peer-to-peer over an encrypted WebRTC data channel rather than through the BlinkSend application server.
+
+## Main capabilities
+
+- Send / Receive entry flow
+- QR and invite-link pairing
+- mutual six-digit peer verification derived from WebRTC DTLS fingerprints
+- incremental SHA-256 file verification
+- numbered chunks and reconnect/resume
+- restart-safe resume on supported browsers using IndexedDB + persistent file handles
+- large-file streaming with File System Access API or OPFS fallback
+- folder transfer and nested folder reconstruction on supported browsers
+- direct link sharing
+- English and Swedish UI
+- light/dark themes
+- TURN support with short-lived credentials
+- server-side rate limiting and malformed signaling controls
+
+## Important files
+
+- README.md — setup, architecture, features, deployment, limitations
+- SECURITY.md — threat model and vulnerability reporting
+- server.js — HTTP server, WebSocket signaling, room handling, ICE/TURN endpoint, abuse controls
+- public/index.html — browser UI structure
+- public/app.js — pairing, WebRTC, transfer protocol, resume, folder handling, UI state
+- public/sha256.js — incremental SHA-256 implementation used for file integrity
+- public/persistence.js — IndexedDB-backed persistent transfer session metadata
+- public/style.css — UI styling
+- test/signaling.test.js — server/signaling/security tests
+- test/sha256.test.js — SHA-256 known-vector tests
+- test/client-syntax.test.js — browser-script syntax checks
+- .github/workflows/ci.yml — CI
+
+## Development
+
+```bash
+npm ci
+npm test
+npm start
+```
+
+Open http://localhost:3000.
+
+## Architecture
+
+1. Browser A joins a random room.
+2. Browser B joins the same room.
+3. server.js forwards WebRTC SDP/ICE signaling only.
+4. Browsers establish a WebRTC data channel.
+5. Both users compare and confirm the same six-digit verification code.
+6. File data is split into numbered chunks and sent over WebRTC.
+7. Receiver hashes incoming bytes with SHA-256.
+8. Sender and receiver compare hashes before reporting a verified transfer.
+9. Interrupted transfers can resume from the receiver's next committed chunk.
+10. Supported browsers persist transfer state and file handles for reload-safe resume.
+
+## Security notes
+
+Room URLs are bearer secrets and should be shared privately. Peer verification is required before transfer controls unlock. TURN credentials are short-lived and require a valid room join token. File integrity is checked end-to-end with SHA-256. Public production deployments should still use edge/reverse-proxy rate limiting and TURN bandwidth controls.
+
+## Browser capability notes
+
+Some features depend on browser support:
+- showOpenFilePicker / showSaveFilePicker
+- showDirectoryPicker
+- persistent FileSystemHandle objects in IndexedDB
+- OPFS
+
+Fallbacks are kept where possible.
+
+## AI / coding-agent guidance
+
+Read README.md, SECURITY.md, server.js, public/app.js, public/persistence.js, and the tests before making protocol changes.
+Do not remove peer verification, SHA-256 validation, room limits, signaling validation, or rate limits.
+Keep the user-facing flow simple and account-free.
+Prefer small compatible protocol changes and update tests and README when behavior changes.
