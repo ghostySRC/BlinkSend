@@ -1,7 +1,6 @@
 name: Browser / network compatibility report
 description: Share a successful or failing real-device test
 title: "[Compatibility] "
-labels: ["compatibility"]
 body:
   - type: input
     id: sender
