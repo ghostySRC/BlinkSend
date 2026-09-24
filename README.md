@@ -59,7 +59,7 @@ BlinkSend can also be installed as a PWA on supporting browsers. No account is r
 - Peer verification code derived from the WebRTC DTLS fingerprints. Both devices must confirm the same six-digit code before sending is unlocked.
 - Incremental SHA-256 verification for every file. A transfer is only reported as verified after sender and receiver hashes match.
 - Transfer progress, average speed, cancellation, connection status, and clear errors when pairing fails.
-- Pending individual files are shown in a visible queue and can be reordered, removed, or cleared while another file is sending. Accepted folder batches lock their membership so sender and receiver stay consistent.
+- Pending individual files are shown in a visible queue and can be reordered, removed, or cleared while another file is sending. New individual files can be appended mid-transfer; folders start only when the current file queue is idle. Accepted folder batches lock their membership so sender and receiver stay consistent.
 - A verified sender session stays connected after completion and exposes **Send another**, so repeated transfers do not require pairing again.
 - Reconnect/resume states are shown explicitly: connection loss, re-verification, resume percentage, and verification retry are no longer silent state changes.
 - A hidden Diagnostics section in Settings shows connection state, Direct/Relay path, candidate types without addresses, RTT, measured throughput, chunk size, send-buffer target, reconnect count, and browser capability support.

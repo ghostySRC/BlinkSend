@@ -475,8 +475,8 @@
     els['peer-name'].textContent = peerName ? peerName : '';
     const unlocked = ready && peerVerified && !calibrating && mode === 'send';
     els.file.disabled = !unlocked || !!pending || !!outgoingBatch;
-    els.folder.disabled = els.file.disabled;
-    els['choose-folder'].disabled = els.file.disabled;
+    els.folder.disabled = !unlocked || !!pending || !!active || !!outgoingBatch;
+    els['choose-folder'].disabled = els.folder.disabled;
     els['share-text'].disabled = !unlocked;
     els['send-text'].disabled = !unlocked;
     els.drop.classList.toggle('disabled', els.file.disabled);
@@ -761,7 +761,7 @@
   function enqueueEntries(entries,folderName=''){
     if(!entries?.length||channel?.readyState!=='open'||pending||outgoingBatch)return;
     const normalized=entries.map(entry=>entry.file?entry:({file:entry,relativePath:entry.webkitRelativePath||''})),isFolder=!!folderName||normalized.some(x=>x.relativePath);
-    if(isFolder&&active)return;
+    if(isFolder&&active){notice('finishFirst');return;}
     if(isFolder){outgoing=[...normalized];batchTotal=outgoing.length;batchDone=0;const id=crypto.randomUUID(),name=folderName||outgoing[0].relativePath.split('/')[0]||'Folder',totalSize=outgoing.reduce((sum,x)=>sum+x.file.size,0);outgoingBatch={id,name,entries:[...outgoing],totalSize,count:outgoing.length,completedBytes:0,completedCount:0};renderQueue();channel.send(JSON.stringify({type:'batch-request',id,name,count:outgoing.length,totalSize}));return;}
     outgoing.push(...normalized);batchTotal=batchDone+(active?1:0)+outgoing.length;renderQueue();if(!active)sendNext();
   }
