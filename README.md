@@ -10,13 +10,13 @@
 ## See it in action
 
 <p align="center">
-  <img src="docs/media/desktop.webp" width="920" alt="BlinkSend v0.2.0 Send and Receive start screen">
+  <img src="docs/media/desktop.webp" width="920" alt="BlinkSend v0.3.0 Send and Receive start screen">
 </p>
 
 <p align="center">
-  <img src="docs/media/mobile.webp" width="270" alt="BlinkSend v0.2.0 mobile light theme">
+  <img src="docs/media/mobile.webp" width="270" alt="BlinkSend v0.3.0 mobile light theme">
   &nbsp;&nbsp;
-  <img src="docs/media/mobile-dark.webp" width="270" alt="BlinkSend v0.2.0 mobile dark theme">
+  <img src="docs/media/mobile-dark.webp" width="270" alt="BlinkSend v0.3.0 mobile dark theme">
 </p>
 
 ### Pair in seconds
@@ -35,7 +35,15 @@ The pairing demo is recorded from two real BlinkSend Chromium sessions using the
 
 The transfer demo is also captured from the running app: two real browser sessions pair, transfer a real local test file over BlinkSend's WebRTC path, display the live progress/speed/ETA UI, reach SHA-256 verified completion, and show the connected **Send another** flow. The test filename and measured speed are demonstration data, not benchmark claims.
 
-The README media is reproducible: `scripts/capture-readme-media.mjs` launches the real BlinkSend server and Chromium, then the on-demand **Refresh README media** workflow captures and commits fresh browser screenshots plus 30 FPS GIFs after UI changes.
+### Queue and keep sending
+
+<p align="center">
+  <img src="docs/media/queue.gif" width="900" alt="Animated BlinkSend transfer queue walkthrough showing reorder, remove, and Send another">
+</p>
+
+This real-browser walkthrough shows pending files being reordered and removed while a transfer is active, followed by the same verified peer session being reused through **Send another**.
+
+The README media is reproducible: `scripts/capture-readme-media.mjs` launches the real BlinkSend server and Chromium. Static screenshots are captured at high DPI, walkthrough videos come from the running UI, a permanently visible cursor moves and pauses over every control before clicking, and motion is interpolated into **50 FPS** GIF output. The on-demand **Refresh README media** workflow regenerates and commits the assets after UI changes.
 
 ## Current flow
 
