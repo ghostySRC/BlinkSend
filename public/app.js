@@ -362,7 +362,7 @@
   let theme = readSetting('blinksend-theme') || (systemTheme.matches ? 'dark' : 'light');
   if (!['dark', 'light'].includes(theme)) theme = 'light';
   const tr = (key, vars = {}) => (translations[language][key] || translations.en[key] || key).replace(/%([a-z]+)%/g, (_, name) => String(vars[name] ?? ''));
-  let lastStatus = { key: 'connectingRoom', ready: false, vars: {} }, lastNotice = { key: '', vars: {} }, progressState, copyTimer;
+  let lastStatus = { key: 'connectingRoom', ready: false, vars: {} }, lastNotice = { key: '', vars: {} }, progressState, copyTimer, lastProgressRenderAt=0;
   function applyTheme() {
     document.documentElement.dataset.theme = theme;
     document.querySelector('meta[name="theme-color"]').content = theme === 'dark' ? '#171d20' : '#f6f7f8';
@@ -590,15 +590,18 @@
   }
   function showTransfer(name, size) {
     els['transfer-info'].hidden = false; els['file-name'].textContent = name; els['file-size'].textContent = format(size);
-    els.progress.value = 0; active.stage = 'starting'; progressState = null;
+    els.progress.value = 0; active.stage = 'starting'; progressState = null; lastProgressRenderAt=0;
     els.file.disabled = true; els.drop.classList.add('disabled');
     els['queue-status'].hidden = batchTotal < 2 || active?.direction !== 'send';
     renderTransfer();
   }
   function progress(bytes,total,started,label){
+    const now=performance.now();
     els.progress.value=total?Math.min(100,bytes/total*100):100;
-    progressState=BlinkProtocol.updateTransferEstimate(progressState,{bytes,total,started,label,now:performance.now()});
-    renderTransfer();
+    progressState=BlinkProtocol.updateTransferEstimate(progressState,{bytes,total,started,label,now});
+    if(!lastProgressRenderAt||now-lastProgressRenderAt>=(tuning.uiIntervalMs||100)||bytes>=total){
+      lastProgressRenderAt=now;renderTransfer();
+    }
   }
   function stopTransfer(message, notify = true, preserveQueue = false, vars = {}) {
     if (notify && active && channel?.readyState === 'open') channel.send(JSON.stringify({ type: 'cancel', id: active.id }));
@@ -643,14 +646,14 @@
   }
   async function runBenchmark(){
     if(channel?.readyState!=='open'||active||benchmarkState)return;
-    const id=crypto.randomUUID(),bytes=512*1024;
+    const id=crypto.randomUUID(),bytes=2*1024*1024;
     benchmarkState={id,bytes,started:0,resolve:null};
     const done=new Promise(resolve=>benchmarkState.resolve=resolve);
     channel.send(JSON.stringify({type:'benchmark-start',id,bytes}));
-    const timeout=setTimeout(()=>benchmarkState?.resolve?.(0),3500);
+    const timeout=setTimeout(()=>benchmarkState?.resolve?.(0),9000);
     const throughput=await done;clearTimeout(timeout);
     if(throughput>0)connectionMetrics.throughputBps=throughput;
-    tuning=BlinkProtocol.chooseTuning({throughputBps:connectionMetrics.throughputBps,rttMs:connectionMetrics.rttMs,deviceMemory:navigator.deviceMemory||4,cores:navigator.hardwareConcurrency||4});
+    tuning=BlinkProtocol.chooseTuning({throughputBps:connectionMetrics.throughputBps,rttMs:connectionMetrics.rttMs,deviceMemory:navigator.deviceMemory||4,cores:navigator.hardwareConcurrency||4,maxMessageSize:pc?.sctp?.maxMessageSize||0});
     if(channel?.readyState==='open')channel.bufferedAmountLowThreshold=tuning.lowWater;
     benchmarkState=null;updateQualityLabel();
   }
@@ -659,7 +662,7 @@
     benchmarkState.started=performance.now();
     const block=new Uint8Array(64*1024),count=Math.ceil(benchmarkState.bytes/block.byteLength);
     for(let i=0;i<count;i++){
-      while(channel.bufferedAmount>4*1024*1024)await new Promise(r=>channel.addEventListener('bufferedamountlow',r,{once:true}));
+      while(channel.bufferedAmount>8*1024*1024)await new Promise(r=>channel.addEventListener('bufferedamountlow',r,{once:true}));
       channel.send(block);
     }
     channel.send(JSON.stringify({type:'benchmark-end',id:benchmarkState.id,bytes:benchmarkState.bytes}));
@@ -700,6 +703,7 @@
     if (!entry || channel?.readyState !== 'open' || active || pending) return;
     const file = entry.file || entry;
     const relativePath = entry.relativePath || file.webkitRelativePath || '';
+    const tuned=BlinkProtocol.chooseTuning({throughputBps:connectionMetrics.throughputBps,rttMs:connectionMetrics.rttMs,deviceMemory:navigator.deviceMemory||4,cores:navigator.hardwareConcurrency||4,maxMessageSize:pc?.sctp?.maxMessageSize||0});tuning=tuned;if(channel?.readyState==='open')channel.bufferedAmountLowThreshold=tuning.lowWater;
     const id = entry.transferId || crypto.randomUUID(); active = { id, direction: 'send', file, sourceEntry:entry, relativePath, batchId:outgoingBatch?.id || entry.batchId || null, chunkSize:tuning.chunkSize, highWater:tuning.highWater, sent: 0, nextChunk: 0, hasher: new BlinkSHA256(), started: Date.now(), accepted: false, paused: false };
     showTransfer(relativePath || file.name, file.size);
     await persistSendSession(entry);
@@ -726,26 +730,70 @@
     outgoing.push(...normalized);batchTotal=batchDone+(active?1:0)+outgoing.length;renderQueue();if(!active)sendNext();
   }
   function enqueueFiles(files) { enqueueEntries([...files].map(file => ({ file, relativePath:file.webkitRelativePath || '' }))); }
+  async function waitForSendCapacity(limit){
+    while(channel?.readyState==='open'&&channel.bufferedAmount>limit){
+      await new Promise(resolve=>{
+        let timer;
+        const done=()=>{clearTimeout(timer);channel?.removeEventListener?.('bufferedamountlow',done);resolve();};
+        channel.addEventListener('bufferedamountlow',done,{once:true});
+        timer=setTimeout(done,100);
+      });
+    }
+    if(channel?.readyState!=='open')throw new Error('Connection closed');
+  }
+  async function flushReceiveWrites(state=active){
+    if(!state?.writer||!state.writeBuffer?.length)return;
+    const entries=state.writeBuffer,start=state.writeBufferStart,total=state.writeBufferBytes;
+    state.writeBuffer=[];state.writeBufferBytes=0;state.writeBufferStart=-1;
+    const merged=new Uint8Array(total);let cursor=0;
+    for(const entry of entries){merged.set(entry.payload,cursor);cursor+=entry.payload.byteLength;}
+    try{await state.writer.write({type:'write',position:start,data:merged});}
+    catch{await state.writer.seek(start);await state.writer.write(merged);}
+    let expectedSeq=state.nextChunk,sequential=!state.hashDirty;
+    for(const entry of entries){if(entry.seq!==expectedSeq){sequential=false;break;}expectedSeq++;}
+    if(sequential)state.hasher.update(merged);else state.hashDirty=true;
+    for(const entry of entries)BlinkTransfer.commitChunk(state,entry.seq,entry.payload.byteLength);
+    if(state===active)progress(state.received,state.size,state.started,'receiving');
+    if(state===active&&state.persistentHandle&&state.writer&&state.received-(state.committedBytes||0)>=(tuning.checkpointBytes||64*1024*1024)){
+      await state.writer.close();state.committedBytes=state.received;await persistReceiveSession();state.writer=await state.persistentHandle.createWritable({keepExistingData:true});
+    }
+  }
   async function pump(id) {
     try {
       const file=active?.file;if(!file||active.id!==id)return;
-      const size=active.chunkSize||defaultChunkSize;
+      const size=active.chunkSize||defaultChunkSize,readAhead=Math.max(size,tuning.readAhead||4*1024*1024);
       if(active.sendRanges){
         while(active?.id===id&&!active.paused&&active.rangeIndex<active.sendRanges.length){
           const range=active.sendRanges[active.rangeIndex];
           if(active.rangeSeq>range[1]){active.rangeIndex++;active.rangeSeq=active.sendRanges[active.rangeIndex]?.[0]??0;continue;}
-          if(channel.readyState!=='open')throw new Error('Connection closed');
-          if(channel.bufferedAmount>(active.highWater||tuning.highWater)){await new Promise(resolve=>channel.addEventListener('bufferedamountlow',resolve,{once:true}));continue;}
-          const seq=active.rangeSeq++,offset=seq*size,part=await file.slice(offset,Math.min(file.size,offset+size)).arrayBuffer();
-          if(active?.id!==id||active.paused)return;channel.send(BlinkTransfer.packChunk(seq,part));active.sent=Math.min(file.size,active.sent+part.byteLength);progress(active.sent,file.size,active.started,'sending');
+          await waitForSendCapacity(active.highWater||tuning.highWater);
+          const firstSeq=active.rangeSeq,rangeEndSeq=range[1]+1,maxSeq=Math.min(rangeEndSeq,firstSeq+Math.max(1,Math.floor(readAhead/size)));
+          const start=firstSeq*size,end=Math.min(file.size,maxSeq*size),buffer=await file.slice(start,end).arrayBuffer(),view=new Uint8Array(buffer);
+          let local=0,seq=firstSeq;
+          while(local<view.byteLength&&seq<maxSeq){
+            if(active?.id!==id||active.paused)return;
+            await waitForSendCapacity(active.highWater||tuning.highWater);
+            const len=Math.min(size,view.byteLength-local),payload=view.subarray(local,local+len);
+            channel.send(BlinkTransfer.packChunk(seq,payload));
+            active.rangeSeq=++seq;active.sent=Math.min(file.size,active.sent+len);local+=len;
+            progress(active.sent,file.size,active.started,'sending');
+          }
         }
         if(active?.id===id&&!active.paused){channel.send(JSON.stringify({type:'complete',id,sha256:active.fullHash}));active.stage='finishing';progressState=null;renderTransfer();}return;
       }
       while(active?.id===id&&!active.paused&&active.sent<file.size){
-        if(channel.readyState!=='open')throw new Error('Connection closed');
-        if(channel.bufferedAmount>(active.highWater||tuning.highWater)){await new Promise(resolve=>channel.addEventListener('bufferedamountlow',resolve,{once:true}));continue;}
-        const seq=active.nextChunk,part=await file.slice(active.sent,active.sent+size).arrayBuffer();
-        if(active?.id!==id||active.paused)return;active.hasher.update(part);channel.send(BlinkTransfer.packChunk(seq,part));active.sent+=part.byteLength;active.nextChunk++;progress(active.sent,file.size,active.started,'sending');
+        await waitForSendCapacity(active.highWater||tuning.highWater);
+        const readStart=active.sent,readEnd=Math.min(file.size,readStart+readAhead),buffer=await file.slice(readStart,readEnd).arrayBuffer(),view=new Uint8Array(buffer);
+        active.hasher.update(view);
+        let local=0;
+        while(local<view.byteLength){
+          if(active?.id!==id||active.paused)return;
+          await waitForSendCapacity(active.highWater||tuning.highWater);
+          const seq=active.nextChunk,len=Math.min(size,view.byteLength-local),payload=view.subarray(local,local+len);
+          channel.send(BlinkTransfer.packChunk(seq,payload));
+          active.sent+=len;active.nextChunk++;local+=len;
+          progress(active.sent,file.size,active.started,'sending');
+        }
       }
       if(active?.id===id&&!active.paused){channel.send(JSON.stringify({type:'complete',id,sha256:BlinkTransfer.finalHash(active)}));active.stage='finishing';progressState=null;renderTransfer();}
     } catch {if(active?.id===id){pauseTransfer();status('paused');}}
@@ -803,6 +851,7 @@
     if (msg.type === 'decline' && active?.id === msg.id && active.direction === 'send') finishOutgoing('declined');
     if (msg.type === 'cancel') { if (pending?.id === msg.id) { pending = null; els.incoming.hidden = true; status(readyLabel, true); } if (active?.id === msg.id) { if (active.direction === 'send') finishOutgoing('peerCancelled'); else stopTransfer('peerCancelled', false); } }
     if (msg.type === 'complete' && active?.id === msg.id && active.direction === 'receive') {
+      await flushReceiveWrites(active);
       const totalChunks=Math.ceil(active.size/(active.chunkSize||defaultChunkSize));
       const missing=BlinkTransfer.missingRanges(active);
       if(active.received!==active.size||missing.length){sendResumeMap();return;}
@@ -813,7 +862,7 @@
           active.retries=(active.retries||0)+1;
           if(active.retries<=2){
             if(active.persistentHandle){active.writer=await active.persistentHandle.createWritable();}else if(active.opfs?.handle){active.writer=await active.opfs.handle.createWritable();}else active.chunks=new Array(totalChunks);
-            active.received=0;active.committedBytes=0;active.nextChunk=0;active.receivedMap=new Uint8Array(Math.ceil(totalChunks/8));active.totalChunks=totalChunks;active.hasher=new BlinkSHA256();active.hashDirty=false;active.paused=false;
+            active.received=0;active.committedBytes=0;active.nextChunk=0;active.receivedMap=new Uint8Array(Math.ceil(totalChunks/8));active.totalChunks=totalChunks;active.hasher=new BlinkSHA256();active.hashDirty=false;active.writeBuffer=[];active.writeBufferStart=-1;active.writeBufferBytes=0;active.paused=false;
             channel.send(JSON.stringify({type:'retry',id:msg.id,attempt:active.retries}));progress(0,active.size,active.started,'receiving');return;
           }
           stopTransfer('hashMismatch');return;
@@ -850,18 +899,27 @@
     if(!active||active.direction!=='receive')return;
     const unpacked=BlinkTransfer.unpackChunk(data);if(!unpacked)return;
     const {seq,payload}=unpacked,size=active.chunkSize||defaultChunkSize;
-    const totalChunks=active.totalChunks??BlinkSecurity.chunkCount(active.size,size),check=BlinkTransfer.inspectChunk(active,seq,payload.byteLength);
+    const check=BlinkTransfer.inspectChunk(active,seq,payload.byteLength);
     if(!check.ok){stopTransfer('excess');return;}if(check.duplicate)return;
     const offset=check.offset;
     try{
-      if(seq!==active.nextChunk)active.hashDirty=true;
-      if(!active.hashDirty&&seq===active.nextChunk)active.hasher.update(payload);
-      if(active.writer){await active.writer.seek(offset);await active.writer.write(payload);}else active.chunks[seq]=payload.slice();
-      BlinkTransfer.commitChunk(active,seq,payload.byteLength);
-      if(active.persistentHandle&&active.writer&&active.received-(active.committedBytes||0)>=8*1024*1024){
-        await active.writer.close();active.committedBytes=active.received;await persistReceiveSession();active.writer=await active.persistentHandle.createWritable({keepExistingData:true});
+      if(active.writer){
+        const copied=payload.slice(),target=Math.max(size,tuning.writeBatch||1024*1024);
+        const expected=active.writeBuffer?.length?(active.writeBufferStart+active.writeBufferBytes):offset;
+        if(active.writeBuffer?.length&&offset!==expected){
+          await flushReceiveWrites(active);
+          const afterFlush=BlinkTransfer.inspectChunk(active,seq,payload.byteLength);
+          if(!afterFlush.ok){stopTransfer('excess');return;}if(afterFlush.duplicate)return;
+        }
+        if(!active.writeBuffer?.length){active.writeBuffer=[];active.writeBufferStart=offset;active.writeBufferBytes=0;}
+        active.writeBuffer.push({seq,payload:copied});active.writeBufferBytes+=copied.byteLength;
+        if(active.writeBufferBytes>=target)await flushReceiveWrites(active);
+      }else{
+        if(seq!==active.nextChunk)active.hashDirty=true;
+        if(!active.hashDirty&&seq===active.nextChunk)active.hasher.update(payload);
+        active.chunks[seq]=payload.slice();BlinkTransfer.commitChunk(active,seq,payload.byteLength);
+        progress(active.received,active.size,active.started,'receiving');
       }
-      progress(active.received,active.size,active.started,'receiving');
     }catch{stopTransfer('writeFailed');}
   }
   async function acceptPendingFile(fromBatch = false) {
@@ -881,7 +939,7 @@
     if (pending?.id !== request.id) { writer?.abort(); return; }
     pending = null; els.incoming.hidden = true;
     const receiveChunkSize=request.chunkSize||defaultChunkSize,receiveState=BlinkTransfer.makeReceiveState(request.size,receiveChunkSize);if(!receiveState){notice('transferFailed');return;}const totalChunks=receiveState.totalChunks;
-    active = { ...request, direction:'receive', ...receiveState, committedBytes:0, hasher:new BlinkSHA256(), hashDirty:false, retries:0, chunks:writer ? null : new Array(totalChunks), writer, opfs, persistentHandle, started:Date.now(), paused:false };
+    active = { ...request, direction:'receive', ...receiveState, committedBytes:0, hasher:new BlinkSHA256(), hashDirty:false, retries:0, chunks:writer ? null : new Array(totalChunks), writer, opfs, persistentHandle, writeBuffer:[], writeBufferStart:-1, writeBufferBytes:0, started:Date.now(), paused:false };
     showTransfer(request.relativePath || request.name, request.size);
     await persistReceiveSession();
     channel.send(JSON.stringify({ type:'accept', id:request.id }));

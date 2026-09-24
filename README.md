@@ -11,7 +11,7 @@
   <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
 </p>
 
-<p align="center"><strong>0.4.0-beta.2</strong> · WebRTC · resumable transfers · SHA-256 verification · self-hostable</p>
+<p align="center"><strong>0.4.0-beta.3</strong> · WebRTC · resumable transfers · SHA-256 verification · self-hostable</p>
 <p align="center"><strong><a href="https://blinksend-production.up.railway.app">Try BlinkSend live</a></strong> · <a href="#see-it-in-action">Demo</a> · <a href="#why-blinksend">Why BlinkSend</a> · <a href="#quick-start">Quick start</a> · <a href="#deploy-your-own-instance">Self-host</a> · <a href="COMPATIBILITY.md">Compatibility</a></p>
 
 > **Live demo:** https://blinksend-production.up.railway.app  
@@ -96,8 +96,8 @@ BlinkSend can also be installed as a PWA on supporting browsers. No account is r
 - Restart-safe resume on supported browsers: persistent file handles and IndexedDB session metadata allow an interrupted transfer to continue after a page reload. Receiver writes are checkpointed to disk and a chunk bitmap/range map records what is present, so reconnects can request missing ranges rather than blindly restarting.
 - Send clipboard text, commands, snippets, or `http://` / `https://` links directly to the paired device without creating a file first. Text is capped at 256 KB and framed into small UTF-8 control messages instead of relying on one oversized SCTP message.
 - Paste-to-send: when the sender page is focused, pasting a clipboard file/image queues it; pasting text sends it directly.
-- Automatic connection calibration after peer verification: BlinkSend measures a small 512 KiB WebRTC sample, combines it with RTT/device capability, and tunes the data-channel buffer automatically. Transfer chunks remain conservatively capped at 64 KiB for browser compatibility.
-- Live transfer speed and ETA use an actual recent-throughput window instead of an accelerating per-chunk estimate; the ETA resets after a stall/reconnect until enough fresh data is available. Folder batches show whole-batch bytes plus the current file.
+- Automatic connection calibration after peer verification: BlinkSend measures a 2 MiB WebRTC sample, combines it with RTT, device capability, and the negotiated SCTP message-size limit, then tunes chunk size, read-ahead, disk batching, and the data-channel send buffer. Payload chunks scale up to 256 KiB only when the negotiated connection allows it.
+- The high-throughput transfer path reads multi-megabyte blocks from the sender, sends negotiated larger DataChannel chunks, batches receiver disk writes, checkpoints persistent resume state less aggressively, and throttles UI rendering so transfer work stays off the critical path. Live speed/ETA still use measured recent throughput.
 - Connection status reports Direct vs Relay plus a simple Excellent / Good / Fair / Poor quality label based on measured RTT and throughput.
 - Interface translations for English, Swedish, Spanish, French, German, Portuguese, Simplified Chinese, Japanese, and Arabic, plus light and dark modes. On first visit BlinkSend follows the browser's preferred supported language and falls back to English for unsupported locales; a manual language choice is saved on that device. The initial theme follows your system setting.
 - Your device nickname is stored locally and sent only to the connected peer. BlinkSend also keeps a small local list of recent peer names for recognition and includes the peer name in local transfer history. These labels are not cryptographic identities. Optional completion sound/vibration stays off unless enabled.
@@ -150,7 +150,7 @@ For normal files, the recipient accepts the transfer before data starts. Folder 
 | No save picker, but supports Origin Private File System (OPFS) | Streams large files into temporary browser-managed disk storage, then starts the download | Up to the current 256 GiB safety cap; available storage/quota and browser limits still apply |
 | No save picker and no OPFS | Buffers the file in memory, then starts a download | 200 MB per file |
 
-The 200 MB memory fallback applies only when the browser exposes neither a save-file picker nor OPFS. Independent anti-resource-exhaustion limits currently cap a single announced file at 256 GiB and an accepted batch at 10,000 files / 512 GiB. Transfer speed depends on the sender's upload connection, the receiver's download connection, Wi-Fi quality, browser performance, and whether a relay is required. BlinkSend performs a short post-verification calibration before enabling new sends, preventing calibration frames from overlapping real file data, and tunes its WebRTC send-buffer target while keeping file messages at or below 64 KiB for compatibility. It does not promise a fixed speed.
+The 200 MB memory fallback applies only when the browser exposes neither a save-file picker nor OPFS. Independent anti-resource-exhaustion limits currently cap a single announced file at 256 GiB and an accepted batch at 10,000 files / 512 GiB. Transfer speed depends on the sender's upload connection, receiver download connection, Wi-Fi/LAN quality, browser and storage performance, and whether a relay is required. BlinkSend performs a post-verification calibration, uses the negotiated SCTP message-size ceiling, and adapts its send buffer, file read-ahead, and receiver write batching. Direct same-LAN transfers can be much faster than internet-routed transfers, but BlinkSend does not promise a fixed speed.
 
 ## Deploy your own instance
 

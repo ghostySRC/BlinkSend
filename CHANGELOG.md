@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.4.0-beta.3 — high-throughput transfer engine
+
+### Performance
+- Raise the negotiated peer-input chunk ceiling to 256 KiB while respecting the WebRTC SCTP max-message-size advertised by the active connection.
+- Dynamically select 64/128/192/256 KiB payload chunks instead of forcing every transfer through 64 KiB messages.
+- Read sender files in multi-megabyte blocks and split them into DataChannel packets in memory, drastically reducing asynchronous file-read calls.
+- Batch persistent receiver writes into larger contiguous writes and remove the unconditional seek before every normal in-order chunk.
+- Increase adaptive DataChannel buffering to keep higher-bandwidth links fed while retaining backpressure.
+- Reduce expensive reload-resume disk checkpoints from every 8 MiB to an adaptive 64 MiB interval.
+- Throttle progress/ETA DOM rendering to roughly 10 Hz and bound estimator samples so UI work cannot dominate a fast transfer.
+- Expand connection calibration from 512 KiB to 2 MiB for a more useful high-speed measurement.
+- Add an 8 MiB real WebRTC file-transfer smoke test to the Chromium/Firefox/WebKit E2E matrix.
+
 ## 0.4.0-beta.2 — mobile layout, localization, and ETA accuracy
 
 ### UI and localization

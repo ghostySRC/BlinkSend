@@ -9,10 +9,12 @@ async function loadProtocol(){
 }
 test('adaptive tuning stays browser-safe and scales buffer targets',async()=>{
   const p=await loadProtocol();
-  const weak=p.chooseTuning({throughputBps:100e6,rttMs:20,deviceMemory:2,cores:2});
-  assert.equal(weak.chunkSize,32768);assert.ok(weak.highWater<=2*1024*1024);
-  const fast=p.chooseTuning({throughputBps:100*1024*1024,rttMs:20,deviceMemory:8,cores:8});
-  assert.equal(fast.chunkSize,65536);assert.ok(fast.highWater>=16*1024*1024);
+  const weak=p.chooseTuning({throughputBps:100e6,rttMs:20,deviceMemory:2,cores:2,maxMessageSize:262144});
+  assert.equal(weak.chunkSize,65536);assert.ok(weak.highWater>=8*1024*1024);
+  const fast=p.chooseTuning({throughputBps:100*1024*1024,rttMs:20,deviceMemory:8,cores:8,maxMessageSize:262144});
+  assert.equal(fast.chunkSize,192*1024);assert.ok(fast.highWater>=24*1024*1024);
+  const capped=p.chooseTuning({throughputBps:100*1024*1024,rttMs:20,deviceMemory:8,cores:8,maxMessageSize:65536});
+  assert.ok(capped.chunkSize+4<=65536);
 });
 test('ETA formatting and missing ranges are deterministic',async()=>{
   const p=await loadProtocol();assert.equal(p.formatEta(65),'1m 5s');
@@ -36,4 +38,14 @@ test('transfer ETA uses measured recent throughput and resets after a stall',asy
   state=p.updateTransferEstimate(state,{bytes:4*1024*1024,total:10*1024*1024,label:'sending',now:8000});
   assert.equal(Math.round(state.speed),1024*1024);
   assert.equal(Math.round(state.etaSeconds),6);
+});
+
+test('high-throughput tuning scales read/write batches without exceeding SCTP message size',async()=>{
+  const p=await loadProtocol();
+  const t=p.chooseTuning({throughputBps:40*1024*1024,rttMs:30,deviceMemory:8,cores:8,maxMessageSize:262144});
+  assert.equal(t.chunkSize,192*1024);
+  assert.ok(t.readAhead>=8*1024*1024);
+  assert.ok(t.writeBatch>=2*1024*1024);
+  assert.ok(t.checkpointBytes>=64*1024*1024);
+  assert.ok(t.chunkSize+4<=262144);
 });
