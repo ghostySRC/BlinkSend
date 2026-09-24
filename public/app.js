@@ -1,6 +1,6 @@
 (() => {
   const $ = id => document.getElementById(id);
-  const els = Object.fromEntries(['qr','copy','new-room','status','status-dot','file','drop','transfer-info','file-name','file-size','progress','progress-text','cancel','queue-status','notice','incoming','incoming-detail','save-note','accept','decline'].map(id => [id, $(id)]));
+  const els = Object.fromEntries(['qr','copy','new-room','status','status-dot','file','folder','choose-folder','share-text','send-text','received-text','received-link','copy-received','drop','transfer-info','file-name','file-size','progress','progress-text','cancel','queue-status','notice','incoming','incoming-detail','save-note','accept','decline'].map(id => [id, $(id)]));
   const translations = {
   "en": {
     "language": "Language",
@@ -17,6 +17,13 @@
     "files": "Files",
     "direction": "Send files in either direction once connected.",
     "chooseFiles": "Choose files",
+    "chooseFolder": "Choose folder",
+    "linkPlaceholder": "Paste a link",
+    "sendLink": "Send link",
+    "receivedLink": "Received link",
+    "copyLink": "Copy link",
+    "linkSent": "Link sent.",
+    "invalidLink": "Enter a valid http:// or https:// link.",
     "dropHere": "or drop them here on a computer",
     "transferProgress": "Transfer progress",
     "cancel": "Cancel",
@@ -86,6 +93,13 @@
     "files": "Filer",
     "direction": "Skicka filer åt båda hållen när enheterna är anslutna.",
     "chooseFiles": "Välj filer",
+    "chooseFolder": "Välj mapp",
+    "linkPlaceholder": "Klistra in en länk",
+    "sendLink": "Skicka länk",
+    "receivedLink": "Mottagen länk",
+    "copyLink": "Kopiera länk",
+    "linkSent": "Länken skickades.",
+    "invalidLink": "Ange en giltig http://- eller https://-länk.",
     "dropHere": "eller dra dem hit på en dator",
     "transferProgress": "Överföringsförlopp",
     "cancel": "Avbryt",
@@ -165,6 +179,7 @@
     document.querySelectorAll('[data-i18n]').forEach(el => { el.textContent = tr(el.dataset.i18n); });
     document.querySelectorAll('[data-i18n-alt]').forEach(el => { el.alt = tr(el.dataset.i18nAlt); });
     document.querySelectorAll('[data-i18n-aria]').forEach(el => { el.ariaLabel = tr(el.dataset.i18nAria); });
+    document.querySelectorAll('[data-i18n-placeholder]').forEach(el => { el.placeholder = tr(el.dataset.i18nPlaceholder); });
     els.status.textContent = tr(lastStatus.key, lastStatus.vars);
     els.notice.textContent = lastNotice.key ? tr(lastNotice.key, lastNotice.vars) : '';
     if (pending) updateSaveNote();
@@ -187,7 +202,7 @@
       els['progress-text'].textContent = tr('speed', { label: tr(label), bytes: format(bytes), total: format(total), speed: format(speed) });
     } else els['progress-text'].textContent = tr(active?.stage || 'starting');
   }
-  const chunkSize = 32 * 1024;
+  const chunkSize = 64 * 1024;
   const maxMemoryFile = 200 * 1024 * 1024;
   const format = bytes => bytes < 1024 ? `${bytes} B` : bytes < 1048576 ? `${(bytes / 1024).toFixed(1)} KB` : bytes < 1073741824 ? `${(bytes / 1048576).toFixed(1)} MB` : `${(bytes / 1073741824).toFixed(2)} GB`;
   let socket, pc, channel, pending, active, incomingQueue = Promise.resolve(), signalQueue = Promise.resolve(), connectTimer;
@@ -202,6 +217,10 @@
     els.status.textContent = tr(key, vars);
     els['status-dot'].classList.toggle('ready', ready);
     els.file.disabled = !ready || !!active || !!pending;
+    els.folder.disabled = els.file.disabled;
+    els['choose-folder'].disabled = els.file.disabled;
+    els['share-text'].disabled = !ready;
+    els['send-text'].disabled = !ready;
     els.drop.classList.toggle('disabled', els.file.disabled);
   }
   function notice(key = '', vars = {}) { lastNotice = { key, vars }; els.notice.textContent = key ? tr(key, vars) : ''; }
@@ -252,7 +271,7 @@
   function setupChannel(ch) {
     channel = ch;
     ch.binaryType = 'arraybuffer';
-    ch.bufferedAmountLowThreshold = 512 * 1024;
+    ch.bufferedAmountLowThreshold = 2 * 1024 * 1024;
     ch.onopen = () => { clearTimeout(connectTimer); connectionPath(); notice(); };
     ch.onclose = () => { if (active) stopTransfer('connectionLost', false); status('peerLeft'); };
     ch.onmessage = e => {
@@ -303,11 +322,13 @@
     status(channel?.readyState === 'open' ? readyLabel : 'waiting', channel?.readyState === 'open');
     notice(message, vars);
   }
-  async function sendFile(file) {
-    if (!file || channel?.readyState !== 'open' || active || pending) return;
-    const id = crypto.randomUUID(); active = { id, direction: 'send', file, sent: 0, started: Date.now(), accepted: false };
-    showTransfer(file.name, file.size);
-    channel.send(JSON.stringify({ type: 'request', id, name: file.name, size: file.size }));
+  async function sendFile(entry) {
+    if (!entry || channel?.readyState !== 'open' || active || pending) return;
+    const file = entry.file || entry;
+    const relativePath = entry.relativePath || file.webkitRelativePath || '';
+    const id = crypto.randomUUID(); active = { id, direction: 'send', file, relativePath, sent: 0, started: Date.now(), accepted: false };
+    showTransfer(relativePath || file.name, file.size);
+    channel.send(JSON.stringify({ type: 'request', id, name: file.name, relativePath, size: file.size }));
     active.stage = 'waitingAcceptance'; renderTransfer();
   }
   function sendNext() {
@@ -324,7 +345,7 @@
   }
   function enqueueFiles(files) {
     if (!files?.length || channel?.readyState !== 'open' || active || pending) return;
-    outgoing = [...files]; batchTotal = outgoing.length; batchDone = 0;
+    outgoing = [...files].map(file => ({ file, relativePath: file.webkitRelativePath || '' })); batchTotal = outgoing.length; batchDone = 0;
     sendNext();
   }
   async function pump(id) {
@@ -333,7 +354,7 @@
       if (!file || active.id !== id) return;
       while (active?.id === id && active.sent < file.size) {
         if (channel.readyState !== 'open') throw new Error('Connection closed');
-        if (channel.bufferedAmount > 1024 * 1024) { await new Promise(resolve => { channel.addEventListener('bufferedamountlow', resolve, { once: true }); }); continue; }
+        if (channel.bufferedAmount > 8 * 1024 * 1024) { await new Promise(resolve => { channel.addEventListener('bufferedamountlow', resolve, { once: true }); }); continue; }
         const part = await file.slice(active.sent, active.sent + chunkSize).arrayBuffer();
         if (active?.id !== id) return;
         channel.send(part); active.sent += part.byteLength;
@@ -346,8 +367,10 @@
     let msg; try { msg = JSON.parse(raw); } catch { return; }
     if (msg.type === 'request') {
       if (active || pending || typeof msg.name !== 'string' || msg.name.length > 255 || !Number.isSafeInteger(msg.size) || msg.size < 0 || typeof msg.id !== 'string') { channel.send(JSON.stringify({ type: 'decline', id: msg.id })); return; }
-      pending = { id: msg.id, name: msg.name.replace(/[\\/\x00-\x1f\x7f]/g, '_').trim() || 'download', size: msg.size };
-      els['incoming-detail'].textContent = `${pending.name} · ${format(msg.size)}`;
+      const safeName = msg.name.replace(/[\\/\x00-\x1f\x7f]/g, '_').trim() || 'download';
+      const safePath = typeof msg.relativePath === 'string' ? msg.relativePath.split('/').filter(Boolean).map(part => part.replace(/[\\\x00-\x1f\x7f]/g, '_')).join('/') : '';
+      pending = { id: msg.id, name: safeName, relativePath: safePath, size: msg.size };
+      els['incoming-detail'].textContent = `${pending.relativePath || pending.name} · ${format(msg.size)}`;
       updateSaveNote();
       els.accept.disabled = !window.showSaveFilePicker && msg.size > maxMemoryFile;
       els.incoming.hidden = false; els.accept.focus();
@@ -366,6 +389,13 @@
       } catch { stopTransfer('saveFailed'); }
     }
     if (msg.type === 'saved' && active?.id === msg.id && active.direction === 'send') finishOutgoing(batchTotal > 1 ? 'sentBatch' : 'sent', { current: batchDone + 1, total: batchTotal });
+    if (msg.type === 'text' && typeof msg.text === 'string' && msg.text.length <= 4096) {
+      try {
+        const url = new URL(msg.text);
+        if (!['http:', 'https:'].includes(url.protocol)) return;
+        els['received-link'].href = url.href; els['received-link'].textContent = url.href; els['received-text'].hidden = false;
+      } catch { /* Ignore malformed links. */ }
+    }
   }
   async function receiveChunk(data) {
     if (!active || active.direction !== 'receive') return;
@@ -393,6 +423,21 @@
   els.decline.onclick = () => { if (pending) channel.send(JSON.stringify({ type: 'decline', id: pending.id })); pending = null; els.incoming.hidden = true; status(readyLabel, true); };
   els.cancel.onclick = () => stopTransfer('cancelled');
   els.file.onchange = () => enqueueFiles(els.file.files);
+  els['choose-folder'].onclick = () => els.folder.click();
+  els.folder.onchange = () => enqueueFiles(els.folder.files);
+  function sendText() {
+    if (channel?.readyState !== 'open') return;
+    const value = els['share-text'].value.trim();
+    try {
+      const url = new URL(value);
+      if (!['http:', 'https:'].includes(url.protocol)) throw new Error();
+      channel.send(JSON.stringify({ type: 'text', text: url.href }));
+      els['share-text'].value = ''; notice('linkSent');
+    } catch { notice('invalidLink'); }
+  }
+  els['send-text'].onclick = sendText;
+  els['share-text'].onkeydown = e => { if (e.key === 'Enter') sendText(); };
+  els['copy-received'].onclick = async () => { try { await navigator.clipboard.writeText(els['received-link'].href); } catch { /* Browser may deny clipboard access. */ } };
   els.drop.ondragover = e => { e.preventDefault(); if (!els.file.disabled) els.drop.classList.add('drag'); };
   els.drop.ondragleave = () => els.drop.classList.remove('drag');
   els.drop.ondrop = e => { e.preventDefault(); els.drop.classList.remove('drag'); if (!els.file.disabled) enqueueFiles(e.dataTransfer.files); };
