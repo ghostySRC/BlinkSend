@@ -1,6 +1,6 @@
 (() => {
   const $ = id => document.getElementById(id);
-  const els = Object.fromEntries(['install-app','settings-toggle','settings-panel','settings-close','device-name','notify-complete','nearby-discovery','nearby-code','history-list','clear-history','mode-picker','mode-send','mode-receive','receive-join','join-link','join-room','join-code','join-code-button','join-back','scan-qr','find-nearby','nearby-results','qr-scanner','scanner-video','scanner-help','scanner-close','resume-card','resume-detail','resume-transfer','discard-resume','transfer-workspace','invite-card','pair-code-wrap','pair-code','transfer-card','send-controls','receive-wait','qr','copy','new-room','status','status-dot','peer-name','connection-quality','verify-peer','verify-code','verify-match','file','folder','choose-folder','share-text','send-text','received-text','received-content','received-link','copy-received','share-received','share-last-file','drop','transfer-info','batch-summary','file-name','file-size','progress','progress-text','cancel','queue-status','notice','incoming','incoming-title','incoming-detail','save-note','accept','decline'].map(id => [id, $(id)]));
+  const els = Object.fromEntries(['install-app','settings-toggle','settings-panel','settings-close','device-name','notify-complete','nearby-discovery','nearby-code','history-list','clear-history','mode-picker','mode-send','mode-receive','receive-join','join-link','join-room','join-code','join-code-button','join-back','scan-qr','find-nearby','nearby-results','qr-scanner','scanner-video','scanner-help','scanner-close','resume-card','resume-detail','resume-transfer','discard-resume','transfer-workspace','invite-card','pair-code-wrap','pair-code','pair-code-help','transfer-card','send-controls','receive-wait','qr','copy','new-room','status','status-dot','peer-name','connection-quality','verify-peer','verify-code','verify-match','file','folder','choose-folder','share-text','send-text','received-text','received-content','received-link','copy-received','share-received','share-last-file','drop','transfer-info','batch-summary','file-name','file-size','progress','progress-text','cancel','queue-status','notice','incoming','incoming-title','incoming-detail','save-note','accept','decline'].map(id => [id, $(id)]));
   const translations = {
   "en": {
     "language": "Language",
@@ -19,6 +19,7 @@
     "joinCode": "Use code",
     "pairCode": "Pairing code",
     "pairCodeHelp": "Type this code on the receiving device. It expires after 10 minutes.",
+    "pairCodeUntil": "Valid until %time%. The six-digit verification check is still required.",
     "invalidCode": "That pairing code is invalid or expired.",
     "serverRestarting": "Server restarting — reconnecting…",
     "back": "Back",
@@ -162,6 +163,7 @@
     "joinCode": "Använd kod",
     "pairCode": "Parkopplingskod",
     "pairCodeHelp": "Skriv koden på mottagarenheten. Den går ut efter 10 minuter.",
+    "pairCodeUntil": "Giltig till %time%. Den sexsiffriga verifieringskontrollen krävs fortfarande.",
     "invalidCode": "Parkopplingskoden är ogiltig eller har gått ut.",
     "serverRestarting": "Servern startar om — återansluter…",
     "back": "Tillbaka",
@@ -517,7 +519,7 @@
     socket.onmessage = e => { signalQueue = signalQueue.then(async () => {
       let msg; try { msg = JSON.parse(e.data); } catch { return; }
       try {
-        if (msg.type === 'joined') { iceToken = typeof msg.iceToken === 'string' ? msg.iceToken : ''; const rawCode=typeof msg.pairCode==='string'?msg.pairCode.replace(/[^A-Z0-9]/g,'').slice(0,8):'';if(mode==='send'&&rawCode){els['pair-code'].textContent=rawCode.slice(0,4)+'-'+rawCode.slice(4);els['pair-code-wrap'].hidden=false;} status(msg.count === 1 ? 'waiting' : 'connecting'); if(mode==='send'&&nearbyDiscovery)registerNearby(); }
+        if (msg.type === 'joined') { iceToken = typeof msg.iceToken === 'string' ? msg.iceToken : ''; const rawCode=typeof msg.pairCode==='string'?msg.pairCode.replace(/[^A-Z0-9]/g,'').slice(0,8):'';if(mode==='send'&&rawCode){els['pair-code'].textContent=rawCode.slice(0,4)+'-'+rawCode.slice(4);const expires=Number(msg.pairCodeExpires);if(Number.isFinite(expires)&&expires>Date.now())els['pair-code-help'].textContent=tr('pairCodeUntil',{time:new Date(expires).toLocaleTimeString(language==='sv'?'sv-SE':undefined,{hour:'2-digit',minute:'2-digit'})});els['pair-code-wrap'].hidden=false;} status(msg.count === 1 ? 'waiting' : 'connecting'); if(mode==='send'&&nearbyDiscovery)registerNearby(); }
         if (msg.type === 'server-restart') { pauseTransfer();status('serverRestarting'); }
         if (msg.type === 'full') { status('roomFull'); notice('roomFullHelp'); }
         if (msg.type === 'peer-left') resetPeer();

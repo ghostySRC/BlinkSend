@@ -3,9 +3,10 @@ import { stat } from 'node:fs/promises';
 import { createReadStream } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import { isIP } from 'node:net';
 import { WebSocketServer, WebSocket } from 'ws';
 import QRCode from 'qrcode';
-import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
+import { createHmac, randomBytes, timingSafeEqual, createHash } from 'node:crypto';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.join(root, 'public');
@@ -25,8 +26,8 @@ function normalizeIp(value){return String(value||'unknown').trim().replace(/^::f
 function clientIp(req) {
   const direct=normalizeIp(req.socket?.remoteAddress);
   if(!trustProxy)return direct;
-  const forwarded=String(req.headers['x-forwarded-for']||'').split(',')[0].trim();
-  return normalizeIp(forwarded||direct);
+  const forwarded=normalizeIp(String(req.headers['x-forwarded-for']||'').split(',')[0].trim());
+  return isIP(forwarded)?forwarded:direct;
 }
 function logEvent(event, fields={}) {
   if((process.env.LOG_LEVEL||'info').toLowerCase()==='silent')return;
@@ -34,7 +35,7 @@ function logEvent(event, fields={}) {
   if((process.env.LOG_FORMAT||'text').toLowerCase()==='json')console.log(JSON.stringify(record));
   else console.log(`[BlinkSend] ${event}`, Object.keys(fields).length?fields:'');
 }
-function secureEqual(a,b){const x=Buffer.from(String(a)),y=Buffer.from(String(b));return x.length===y.length&&timingSafeEqual(x,y);}
+function secureEqual(a,b){const x=createHash('sha256').update(String(a)).digest(),y=createHash('sha256').update(String(b)).digest();return timingSafeEqual(x,y);}
 function prunePairCodes(){const now=Date.now();for(const [code,item] of pairCodes){if(item.expires<=now||!rooms.has(item.room))pairCodes.delete(code);}}
 function makePairCode(){
   const alphabet='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';let code='';
@@ -56,7 +57,8 @@ function metricsText(){
     '# HELP blinksend_nearby_records Active Nearby discovery records.','# TYPE blinksend_nearby_records gauge',`blinksend_nearby_records ${nearbyRecords}`,
     '# HELP blinksend_pair_codes Active manual pairing codes.','# TYPE blinksend_pair_codes gauge',`blinksend_pair_codes ${pairCodes.size}`
   ];
-  for(const [name,value] of Object.entries(counters)){lines.push(`# TYPE blinksend_${name} counter`,`blinksend_${name} ${value}`);}
+  const names={httpRequests:'http_requests_total',websocketUpgrades:'websocket_upgrades_total',websocketConnections:'websocket_connections_total',roomJoins:'room_joins_total',rejectedJoins:'rejected_joins_total',signalsForwarded:'signals_forwarded_total',malformedSignals:'malformed_signals_total',rateLimited:'rate_limited_total',pairResolves:'pair_resolves_total',pairResolveMisses:'pair_resolve_misses_total',iceCredentialsIssued:'ice_credentials_issued_total'};
+  for(const [name,value] of Object.entries(counters)){const metric=names[name]||name;lines.push(`# TYPE blinksend_${metric} counter`,`blinksend_${metric} ${value}`);}
   return lines.join('\n')+'\n';
 }
 async function readJson(req, limit = 4096) {
@@ -111,10 +113,11 @@ const server = http.createServer(async (req, res) => {
     counters.httpRequests++;
     const pathname = new URL(req.url, 'http://localhost').pathname;
     if (pathname === '/health') {
-      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+      res.writeHead(200, securityHeaders({ 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }));
       res.end(JSON.stringify({ status: 'ok' })); return;
     }
     if (pathname === '/metrics') {
+      const ip=clientIp(req);if(!allowed(`metrics:${ip}`,60,60_000)){res.writeHead(429,securityHeaders({'Retry-After':'60','Cache-Control':'no-store'})).end();return;}
       const token=process.env.METRICS_TOKEN||'';if(!token){res.writeHead(404).end();return;}
       const auth=String(req.headers.authorization||'');const supplied=auth.startsWith('Bearer ')?auth.slice(7):'';
       if(!secureEqual(supplied,token)){res.writeHead(403,securityHeaders({'Cache-Control':'no-store'})).end();return;}
@@ -210,7 +213,7 @@ wss.on('connection', (ws, req) => {
       ws.room = message.room;
       room.peers.add(ws);
       room.touched = Date.now();
-      counters.roomJoins++;send(ws, { type: 'joined', count: room.peers.size, iceToken: issueIceToken(ws.ip), pairCode: issuePairCode(message.room) });
+      counters.roomJoins++;const pair=issuePairCode(message.room);send(ws, { type: 'joined', count: room.peers.size, iceToken: issueIceToken(ws.ip), pairCode: pair.code, pairCodeExpires: pair.expires });
       if (room.peers.size === 2) {
         for (const peer of room.peers) if (peer !== ws) send(peer, { type: 'peer-joined' });
       }
@@ -248,7 +251,7 @@ async function shutdown(signal='manual'){
   if(shuttingDown)return;shuttingDown=true;logEvent('server.shutdown',{signal,rooms:rooms.size,peers:wss.clients.size});
   for(const ws of wss.clients){send(ws,{type:'server-restart'});ws.close(1012,'Server restarting');}
   if(!server.listening)return;
-  await new Promise(resolve=>{let done=false;const finish=()=>{if(!done){done=true;resolve();}};server.close(finish);const timer=setTimeout(()=>{for(const ws of wss.clients)ws.terminate();finish();},3000);timer.unref();});
+  await new Promise(resolve=>{let done=false;const finish=()=>{if(!done){done=true;resolve();}};server.close(finish);const timer=setTimeout(()=>{for(const ws of wss.clients)ws.terminate();server.closeAllConnections?.();finish();},3000);timer.unref();});
 }
 const isMain=process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url);
 if(isMain){

@@ -19,7 +19,7 @@ BlinkSend can also be installed as a PWA on supporting browsers. No account is r
 
 ## Features
 
-- Simple Send / Receive entry flow for computer ↔ computer and phone ↔ computer sharing through an invite link, QR code, or an eight-character manual pairing code. Manual codes expire after 10 minutes and still require the six-digit fingerprint check.
+- Simple Send / Receive entry flow for computer ↔ computer and phone ↔ computer sharing through an invite link, QR code, or an eight-character manual pairing code. Manual codes expire after 10 minutes, the sender UI shows the local expiration time, and the six-digit fingerprint check is still required.
 - Installable PWA on supporting browsers, with an application-shell service worker for fast relaunch. Peer-to-peer transfers still require both devices to be online.
 - In-app QR scanning on browsers that expose the Barcode Detection API and camera access; unsupported browsers can still use the system camera or paste the link.
 - Optional Nearby discovery is off by default. A sender can advertise a device name and short-lived code for five minutes to receivers seen behind the same network address; peer verification is still mandatory.
@@ -75,7 +75,7 @@ sequenceDiagram
     A->>B: File over encrypted data channel
 ```
 
-The Node server serves the web interface and exchanges WebRTC connection details over `/signal`. File contents travel over the WebRTC data channel. When a TURN relay is configured and needed, the relay carries encrypted WebRTC traffic and consumes relay bandwidth. The server keeps room membership in memory, with a maximum of two sockets per room; inactive rooms expire after 30 minutes. Each live room also gets an eight-character code that maps to the random 128-bit room ID for 10 minutes. On SIGTERM/SIGINT, BlinkSend sends a restart notice, closes peers with WebSocket code 1012, and gives connections up to three seconds to drain before terminating them.
+The Node server serves the web interface and exchanges WebRTC connection details over `/signal`. File contents travel over the WebRTC data channel. When a TURN relay is configured and needed, the relay carries encrypted WebRTC traffic and consumes relay bandwidth. The server keeps room membership in memory, with a maximum of two sockets per room; inactive rooms expire after 30 minutes. Each live room also gets an eight-character code that maps to the random 128-bit room ID for 10 minutes. On SIGTERM/SIGINT, BlinkSend sends a restart notice, closes peers with WebSocket code 1012, and gives connections up to three seconds to drain before terminating WebSockets and any remaining HTTP connections.
 
 For normal files, the recipient accepts the transfer before data starts. Folder transfers can be accepted once as a batch; on supported browsers the receiver chooses one destination and BlinkSend recreates nested directories automatically. Incoming relative paths are normalized and traversal segments such as `..` are rejected before any directory handle is opened. Files are split into numbered chunks. The receiver maintains a compact chunk bitmap and converts gaps into missing ranges during reconnect, allowing the sender to retransmit only those ranges. Network reconnects also attempt an ICE restart when the browser reports a network-interface change. When both sides use persistent File System Access handles, BlinkSend also stores the active session in IndexedDB so a page reload can resume the current transfer after the user grants access again. Browsers without persistent handles keep the in-page resume behavior only. Offline delivery is not supported, and only one file is active at a time.
 
@@ -117,7 +117,7 @@ Run one long-lived Node process behind an HTTPS reverse proxy. The proxy must fo
 
 4. Open `https://blinksend.example.com/health` to check the process, then test the site from two devices. The health endpoint returns `{"status":"ok"}`.
 
-If the reverse proxy is the only process allowed to connect to BlinkSend, set `TRUST_PROXY=1` and configure the proxy to **overwrite** `X-Forwarded-For`; otherwise leave it disabled. With `METRICS_TOKEN` set, `/metrics` exposes Prometheus-style counters/gauges for rooms, peers, signaling, pair-code lookups, rate limits, and ICE issuance without room IDs or client IP labels.
+If the reverse proxy is the only process allowed to connect to BlinkSend, set `TRUST_PROXY=1` and configure the proxy to **overwrite** `X-Forwarded-For`; BlinkSend accepts the forwarded value only when it parses as an IP address. Otherwise leave proxy trust disabled. With `METRICS_TOKEN` set, `/metrics` exposes token-protected, per-IP-rate-limited Prometheus-style counters/gauges for rooms, peers, signaling, pair-code lookups, rate limits, and ICE issuance without room IDs or client IP labels.
 
 Use one server process for now: room membership, manual pairing codes, Nearby records, and rate-limit buckets are held in that process's memory. Running multiple replicas behind a load balancer without shared room/signaling state will break pairing. The included container/Compose setup intentionally runs one application replica.
 
