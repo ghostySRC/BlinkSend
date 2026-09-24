@@ -1,0 +1,50 @@
+name: Browser / network compatibility report
+description: Share a successful or failing real-device test
+title: "[Compatibility] "
+body:
+  - type: input
+    id: sender
+    attributes:
+      label: Sender
+      placeholder: "Windows 11 · Chrome 152"
+    validations:
+      required: true
+  - type: input
+    id: receiver
+    attributes:
+      label: Receiver
+      placeholder: "iPhone · Safari 26"
+    validations:
+      required: true
+  - type: dropdown
+    id: topology
+    attributes:
+      label: Network
+      options:
+        - Same LAN / Wi-Fi
+        - Different networks
+        - VPN
+        - Mobile data
+        - TURN-required / restrictive network
+        - Other
+    validations:
+      required: true
+  - type: checkboxes
+    id: tested
+    attributes:
+      label: What worked?
+      options:
+        - label: Pairing
+        - label: Six-digit peer verification
+        - label: Single-file transfer
+        - label: Multi-file queue
+        - label: Folder transfer
+        - label: Clipboard text/link
+        - label: Disconnect/reconnect resume
+        - label: Reload-safe resume
+        - label: PWA / Share Target
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes / failures
+      description: Include file size and Direct/Relay status when useful. Remove secrets.
