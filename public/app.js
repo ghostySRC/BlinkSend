@@ -783,11 +783,7 @@
     const block=new Uint8Array(blockBytes),count=Math.ceil(state.bytes/block.byteLength),limit=4*1024*1024;
     for(let i=0;i<count;i++){
       if(benchmarkState!==state||state.cancelled||channel?.readyState!=='open')return;
-      while(channel.bufferedAmount>limit){
-        if(benchmarkState!==state||state.cancelled||channel?.readyState!=='open')return;
-        await new Promise(resolve=>setTimeout(resolve,4));
-      }
-      channel.send(block);
+      await sendBinaryPacket(block,limit);
     }
     if(benchmarkState===state&&!state.cancelled&&channel?.readyState==='open')
       channel.send(JSON.stringify({type:'benchmark-end',id:state.id,bytes:state.bytes}));
