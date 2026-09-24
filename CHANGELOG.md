@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.4.0-beta.4 — sustained multi-gigabyte transfer stability
+
+### Throughput and stability
+- Optimize the streaming SHA-256 hot path to process full 64-byte blocks directly from existing file buffers, avoid per-block typed-array views, and eliminate the temporary eight-word array created after every compression block.
+- Add receiver-credit flow control: the destination periodically reports bytes actually committed/processed and a bounded receive window, so the sender cannot flood a slower browser even when the WebRTC send buffer still looks healthy.
+- Use adaptive 8–48 MiB receiver windows with frequent credit acknowledgements to keep fast links full without allowing unbounded receive backlog.
+- Expand fast-link payload selection to 256 KiB when the negotiated SCTP limit safely permits it.
+- Increase fast-device sender read-ahead to 16 MiB and receiver contiguous write batches up to 8 MiB.
+- Move durable resume checkpoints to 128 MiB intervals to reduce close/reopen overhead on very large transfers while preserving reload recovery.
+- Carry receiver credit across resume/reconnect and reset it safely during verification retries.
+- Add validation for flow-control messages so a peer cannot advertise impossible progress or abusive receive windows.
+- Expand sustained binary E2E coverage to 64 MiB in Firefox/WebKit and 224 MiB in Chromium; the Chromium case crosses the 200 MiB memory cutoff and therefore exercises the OPFS streaming path used by larger files.
+
 ## 0.4.0-beta.3 — high-throughput transfer engine
 
 ### Performance

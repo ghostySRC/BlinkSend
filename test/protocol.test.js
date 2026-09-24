@@ -12,7 +12,7 @@ test('adaptive tuning stays browser-safe and scales buffer targets',async()=>{
   const weak=p.chooseTuning({throughputBps:100e6,rttMs:20,deviceMemory:2,cores:2,maxMessageSize:262144});
   assert.equal(weak.chunkSize,65536);assert.ok(weak.highWater>=8*1024*1024);
   const fast=p.chooseTuning({throughputBps:100*1024*1024,rttMs:20,deviceMemory:8,cores:8,maxMessageSize:262144});
-  assert.equal(fast.chunkSize,192*1024);assert.ok(fast.highWater>=24*1024*1024);
+  assert.equal(fast.chunkSize,262140);assert.ok(fast.highWater>=24*1024*1024);assert.ok(fast.receiveWindow>=32*1024*1024);
   const capped=p.chooseTuning({throughputBps:100*1024*1024,rttMs:20,deviceMemory:8,cores:8,maxMessageSize:65536});
   assert.ok(capped.chunkSize+4<=65536);
 });
@@ -43,9 +43,26 @@ test('transfer ETA uses measured recent throughput and resets after a stall',asy
 test('high-throughput tuning scales read/write batches without exceeding SCTP message size',async()=>{
   const p=await loadProtocol();
   const t=p.chooseTuning({throughputBps:40*1024*1024,rttMs:30,deviceMemory:8,cores:8,maxMessageSize:262144});
-  assert.equal(t.chunkSize,192*1024);
-  assert.ok(t.readAhead>=8*1024*1024);
-  assert.ok(t.writeBatch>=2*1024*1024);
-  assert.ok(t.checkpointBytes>=64*1024*1024);
-  assert.ok(t.chunkSize+4<=262144);
+  assert.equal(t.chunkSize,262140);
+  assert.ok(t.readAhead>=16*1024*1024);
+  assert.ok(t.writeBatch>=4*1024*1024);
+  assert.ok(t.receiveWindow>=32*1024*1024);
+  assert.ok(t.checkpointBytes>=128*1024*1024);
+  assert.equal(t.chunkSize+4,262144);
+});
+
+test('receiver-aware flow window stays conservative on weak devices and expands on fast links',async()=>{
+  const p=await loadProtocol();
+  const weak=p.chooseTuning({throughputBps:8*1024*1024,rttMs:20,deviceMemory:2,cores:2,maxMessageSize:262144});
+  const fast=p.chooseTuning({throughputBps:40*1024*1024,rttMs:20,deviceMemory:8,cores:8,maxMessageSize:262148});
+  assert.ok(weak.receiveWindow<=16*1024*1024);
+  assert.ok(fast.receiveWindow>=32*1024*1024);
+  assert.ok(fast.flowAckBytes<fast.receiveWindow);
+});
+
+test('unknown device memory uses a conservative receive window without slowing sender buffering',async()=>{
+  const p=await loadProtocol();
+  const t=p.chooseTuning({throughputBps:40*1024*1024,rttMs:25,deviceMemory:0,cores:6,maxMessageSize:262144});
+  assert.equal(t.receiveWindow,16*1024*1024);
+  assert.ok(t.highWater>=16*1024*1024);
 });

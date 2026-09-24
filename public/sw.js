@@ -1,4 +1,4 @@
-const CACHE='blinksend-shell-v3';
+const CACHE='blinksend-shell-v4';
 const SHELL=['/','/style.css','/app.js','/locales.js','/locales/es.js','/locales/fr.js','/locales/de.js','/locales/pt.js','/locales/zh.js','/locales/ja.js','/locales/ar.js','/sha256.js','/protocol.js','/security.js','/verification.js','/connection.js','/control-policy.js','/transfer-core.js','/storage.js','/persistence.js','/favicon.svg','/manifest.webmanifest'];
 const SHELL_PATHS=new Set(SHELL);
 self.addEventListener('install',event=>event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(SHELL)).then(()=>self.skipWaiting())));

@@ -1,5 +1,8 @@
 import { chromium, firefox, webkit } from 'playwright';
 import { spawn } from 'node:child_process';
+import { mkdtemp, open, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 const browserName=process.env.BROWSER||'chromium';
 const browserType={chromium,firefox,webkit}[browserName];
@@ -18,7 +21,7 @@ async function waitFor(fn,label,timeout=20000){
   while(Date.now()<end){try{if(await fn())return;}catch(e){last=e;}await new Promise(r=>setTimeout(r,100));}
   throw new Error('timeout waiting for '+label+(last?': '+last.message:''));
 }
-let browser;
+let browser,tempDir;
 try{
   await waitServer();
   browser=await browserType.launch({headless:true});
@@ -51,14 +54,17 @@ try{
   await Promise.all([sender.locator('#verify-match').click(),receiver.locator('#verify-match').click()]);
   await waitFor(()=>sender.locator('#send-text').isEnabled(),'verified send controls',25000);
 
+  const perfMiB=browserName==='chromium'?224:64;
+  tempDir=await mkdtemp(join(tmpdir(),'blinksend-e2e-'));
+  const perfPath=join(tempDir,'throughput.bin'),fh=await open(perfPath,'w'),block=Buffer.alloc(1024*1024,0x5a);
+  try{for(let i=0;i<perfMiB;i++)await fh.write(block);}finally{await fh.close();}
   const perfStart=Date.now();
-  const payload=Buffer.alloc(8*1024*1024,0x5a);
-  await sender.locator('#file').setInputFiles({name:'throughput.bin',mimeType:'application/octet-stream',buffer:payload});
+  await sender.locator('#file').setInputFiles(perfPath);
   await waitFor(()=>receiver.locator('#incoming').isVisible(),'binary transfer prompt',10000);
   await receiver.locator('#accept').click();
-  await waitFor(()=>sender.locator('#post-transfer').isVisible(),'binary transfer completion',30000);
+  await waitFor(()=>sender.locator('#post-transfer').isVisible(),'binary transfer completion',120000);
   const perfSeconds=(Date.now()-perfStart)/1000;
-  if(perfSeconds>30)throw new Error('8 MiB binary transfer exceeded smoke-test budget');
+  if(perfSeconds>120)throw new Error(perfMiB+' MiB binary transfer exceeded smoke-test budget');
 
   const message=`BlinkSend ${browserName} WebRTC check ${Date.now()}`;
   await sender.locator('#share-text').fill(message);
@@ -82,10 +88,11 @@ try{
   const rtlContext=await browser.newContext({locale:'ar-SA'});const rtl=await rtlContext.newPage();await rtl.goto(base,{waitUntil:'domcontentloaded'});
   if(await rtl.locator('#language').inputValue()!=='ar'||await rtl.locator('html').getAttribute('dir')!=='rtl')throw new Error('Arabic locale/RTL did not apply');await rtlContext.close();
 
-  console.log(JSON.stringify({browser:browserName,pairingCode:true,verificationCode:true,webrtcText:true,binaryFile:true,binaryMiBPerSec:Number((8/perfSeconds).toFixed(2)),mobileLayout:true,browserLocale:true,rtl:true},null,2));
+  console.log(JSON.stringify({browser:browserName,pairingCode:true,verificationCode:true,webrtcText:true,binaryFile:true,binaryMiB:perfMiB,binaryMiBPerSec:Number((perfMiB/perfSeconds).toFixed(2)),mobileLayout:true,browserLocale:true,rtl:true},null,2));
   await Promise.all([senderContext.close(),receiverContext.close()]);
 }finally{
   await browser?.close().catch(()=>{});
+  if(tempDir)await rm(tempDir,{recursive:true,force:true}).catch(()=>{});
   server.kill('SIGTERM');
   await new Promise(r=>setTimeout(r,250));
   if(!server.killed)server.kill('SIGKILL');
