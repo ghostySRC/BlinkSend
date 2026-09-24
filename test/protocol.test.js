@@ -71,7 +71,7 @@ test('unknown device memory uses a conservative receive window without slowing s
 test('same-LAN tuning opens the pipeline without bypassing SCTP limits',async()=>{
   const p=await loadProtocol();
   const t=p.chooseTuning({throughputBps:12*1024*1024,rttMs:5,deviceMemory:0,cores:6,maxMessageSize:262144,lan:true});
-  assert.equal(t.chunkSize,262140);
+  assert.equal(t.chunkSize,192*1024);
   assert.ok(t.highWater>=48*1024*1024);
   assert.ok(t.readAhead>=32*1024*1024);
   assert.ok(t.receiveWindow>=24*1024*1024);
