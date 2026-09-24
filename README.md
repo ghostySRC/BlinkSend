@@ -1,6 +1,7 @@
 <p align="center"><img src="public/favicon.svg" width="68" alt="BlinkSend logo"></p>
 <h1 align="center">BlinkSend</h1>
 <p align="center">A self-hosted file transfer tool for two browsers.</p>
+<p align="center"><strong>Current package version:</strong> 0.2.0</p>
 <p align="center"><a href="#features">Features</a> · <a href="#quick-start">Quick start</a> · <a href="#how-it-works">How it works</a> · <a href="#deploy-your-own-instance">Self-host</a></p>
 
 
@@ -172,7 +173,7 @@ npm start
 
 `npm test` explicitly runs only `test/*.test.js` (so benchmark/load scripts can never be auto-discovered as tests) and covers signaling abuse controls, manual pairing and metrics, explicit trusted-proxy IP parsing, graceful restart notification/close behavior, SHA-256 vectors, browser-script syntax, PWA manifest invariants, UTF-8 text framing, path traversal rejection, corruption detection, a 10,000-file manifest, and a sparse chunk bitmap sized for a 5 GiB transfer without allocating 5 GiB of data. `npm run bench` prints repeatable timings for the 5 GiB-equivalent chunk map and 10,000-file manifest operations. `npm run loadtest` runs `scripts/load-benchmark.mjs`, boots the real signaling server, creates 10 simultaneous rooms / 20 WebSockets, forwards 500 validated signaling messages, resolves manual pairing codes, checks health, and shuts the server down.
 
-`public/` contains the browser interface and transfer logic. `server.js` serves static files, QR codes, temporary ICE credentials, and WebSocket signaling. `test/` covers the server's room behavior. The project uses no frontend build step.
+`public/` contains the browser interface and transfer logic. `server.js` serves static files, QR codes, manual pairing resolution, optional Nearby/metrics endpoints, temporary ICE credentials, WebSocket signaling, and graceful shutdown handling. `test/` covers the server's room behavior. The project uses no frontend build step.
 
 Contributions are welcome. For a bug report, include browser and operating system versions, whether the devices were on the same network, the connection status shown in BlinkSend, and steps to reproduce the problem. Do not post private invite links or TURN credentials.
 
