@@ -60,6 +60,10 @@
           <input id="join-link" type="url" inputmode="url" autocomplete="off" data-i18n-placeholder="invitePlaceholder" placeholder="https://…/#room">
           <button id="join-room" type="button" class="button primary" data-i18n="join">Join</button>
         </div>
+        <div class="join-row code-row">
+          <input id="join-code" type="text" inputmode="text" maxlength="9" autocomplete="one-time-code" data-i18n-placeholder="codePlaceholder" placeholder="ABCD-EFGH">
+          <button id="join-code-button" type="button" class="button secondary" data-i18n="joinCode">Use code</button>
+        </div>
         <div class="receive-tools"><button id="scan-qr" type="button" class="button secondary" data-i18n="scanQr">Scan QR</button><button id="find-nearby" type="button" class="button secondary" data-i18n="findNearby">Find nearby</button></div>
         <div id="nearby-results" class="nearby-results" hidden></div>
         <button id="join-back" type="button" class="text-button" data-i18n="back">Back</button>
@@ -80,7 +84,7 @@
         <section id="invite-card" class="card invite" aria-labelledby="invite-title">
           <div class="section-heading"><h2 id="invite-title" data-i18n="connectDevice">Connect a device</h2><p data-i18n="scan">Scan the code or open the invite link on your other device.</p></div>
           <div class="qr-wrap"><img id="qr" width="186" height="186" alt="QR code for this room" data-i18n-alt="qrAlt"></div>
-          <div class="invite-actions"><button id="copy" type="button" class="button secondary" data-i18n="copy">Copy invite link</button><button id="new-room" type="button" class="text-button" data-i18n="newRoom">New room</button></div>
+          <div id="pair-code-wrap" class="pair-code-wrap" hidden><span data-i18n="pairCode">Pairing code</span><strong id="pair-code">••••-••••</strong><small data-i18n="pairCodeHelp">Type this code on the receiving device. It expires after 10 minutes.</small></div><div class="invite-actions"><button id="copy" type="button" class="button secondary" data-i18n="copy">Copy invite link</button><button id="new-room" type="button" class="text-button" data-i18n="newRoom">New room</button></div>
           <p class="hint" data-i18n="private">Anyone with the link can try to join. Verify the code on both devices.</p>
         </section>
 

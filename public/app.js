@@ -1,6 +1,6 @@
 (() => {
   const $ = id => document.getElementById(id);
-  const els = Object.fromEntries(['install-app','settings-toggle','settings-panel','settings-close','device-name','notify-complete','nearby-discovery','nearby-code','history-list','clear-history','mode-picker','mode-send','mode-receive','receive-join','join-link','join-room','join-back','scan-qr','find-nearby','nearby-results','qr-scanner','scanner-video','scanner-help','scanner-close','resume-card','resume-detail','resume-transfer','discard-resume','transfer-workspace','invite-card','transfer-card','send-controls','receive-wait','qr','copy','new-room','status','status-dot','peer-name','connection-quality','verify-peer','verify-code','verify-match','file','folder','choose-folder','share-text','send-text','received-text','received-content','received-link','copy-received','share-received','share-last-file','drop','transfer-info','batch-summary','file-name','file-size','progress','progress-text','cancel','queue-status','notice','incoming','incoming-title','incoming-detail','save-note','accept','decline'].map(id => [id, $(id)]));
+  const els = Object.fromEntries(['install-app','settings-toggle','settings-panel','settings-close','device-name','notify-complete','nearby-discovery','nearby-code','history-list','clear-history','mode-picker','mode-send','mode-receive','receive-join','join-link','join-room','join-code','join-code-button','join-back','scan-qr','find-nearby','nearby-results','qr-scanner','scanner-video','scanner-help','scanner-close','resume-card','resume-detail','resume-transfer','discard-resume','transfer-workspace','invite-card','pair-code-wrap','pair-code','transfer-card','send-controls','receive-wait','qr','copy','new-room','status','status-dot','peer-name','connection-quality','verify-peer','verify-code','verify-match','file','folder','choose-folder','share-text','send-text','received-text','received-content','received-link','copy-received','share-received','share-last-file','drop','transfer-info','batch-summary','file-name','file-size','progress','progress-text','cancel','queue-status','notice','incoming','incoming-title','incoming-detail','save-note','accept','decline'].map(id => [id, $(id)]));
   const translations = {
   "en": {
     "language": "Language",
@@ -15,6 +15,12 @@
     "pasteInviteHelp": "Paste a BlinkSend invite link.",
     "invitePlaceholder": "https://…/#room",
     "join": "Join",
+    "codePlaceholder": "ABCD-EFGH",
+    "joinCode": "Use code",
+    "pairCode": "Pairing code",
+    "pairCodeHelp": "Type this code on the receiving device. It expires after 10 minutes.",
+    "invalidCode": "That pairing code is invalid or expired.",
+    "serverRestarting": "Server restarting — reconnecting…",
     "back": "Back",
     "resumeAvailable": "Unfinished transfer found",
     "resumeTransfer": "Resume transfer",
@@ -152,6 +158,12 @@
     "pasteInviteHelp": "Klistra in en BlinkSend-inbjudningslänk.",
     "invitePlaceholder": "https://…/#rum",
     "join": "Anslut",
+    "codePlaceholder": "ABCD-EFGH",
+    "joinCode": "Använd kod",
+    "pairCode": "Parkopplingskod",
+    "pairCodeHelp": "Skriv koden på mottagarenheten. Den går ut efter 10 minuter.",
+    "invalidCode": "Parkopplingskoden är ogiltig eller har gått ut.",
+    "serverRestarting": "Servern startar om — återansluter…",
     "back": "Tillbaka",
     "resumeAvailable": "Oavslutad överföring hittades",
     "resumeTransfer": "Fortsätt överföringen",
@@ -505,7 +517,8 @@
     socket.onmessage = e => { signalQueue = signalQueue.then(async () => {
       let msg; try { msg = JSON.parse(e.data); } catch { return; }
       try {
-        if (msg.type === 'joined') { iceToken = typeof msg.iceToken === 'string' ? msg.iceToken : ''; status(msg.count === 1 ? 'waiting' : 'connecting'); if(mode==='send'&&nearbyDiscovery)registerNearby(); }
+        if (msg.type === 'joined') { iceToken = typeof msg.iceToken === 'string' ? msg.iceToken : ''; const rawCode=typeof msg.pairCode==='string'?msg.pairCode.replace(/[^A-Z0-9]/g,'').slice(0,8):'';if(mode==='send'&&rawCode){els['pair-code'].textContent=rawCode.slice(0,4)+'-'+rawCode.slice(4);els['pair-code-wrap'].hidden=false;} status(msg.count === 1 ? 'waiting' : 'connecting'); if(mode==='send'&&nearbyDiscovery)registerNearby(); }
+        if (msg.type === 'server-restart') { pauseTransfer();status('serverRestarting'); }
         if (msg.type === 'full') { status('roomFull'); notice('roomFullHelp'); }
         if (msg.type === 'peer-left') resetPeer();
         if (msg.type === 'peer-joined') { isOfferer=true; await makePeer(); setupChannel(pc.createDataChannel('files', { ordered: true })); await pc.setLocalDescription(await pc.createOffer()); signal('offer', pc.localDescription.toJSON()); status('connecting'); }
@@ -956,6 +969,12 @@
     try { const url = new URL(els['join-link'].value.trim(), location.origin); const id=url.hash.slice(1).toLowerCase(); if (url.origin !== location.origin || !roomPattern.test(id)) throw new Error(); startReceiveRoom(id); }
     catch { notice('invalidInvite'); }
   };
+  async function joinByCode(){
+    const code=els['join-code'].value.toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,8);if(code.length!==8){notice('invalidCode');return;}
+    try{const response=await fetch('/pair/resolve',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code})});if(!response.ok)throw new Error();const data=await response.json();if(!roomPattern.test(data.room))throw new Error();startReceiveRoom(data.room);}catch{notice('invalidCode');}
+  }
+  els['join-code-button'].onclick=joinByCode;
+  els['join-code'].onkeydown=e=>{if(e.key==='Enter')joinByCode();};
   async function checkResume() {
     if (!window.BlinkStore || !room) return;
     try {

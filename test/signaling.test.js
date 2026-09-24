@@ -41,7 +41,12 @@ test('serves the app and pairs only two browsers, forwarding signaling and peer 
     const room = 'a'.repeat(32);
     const first = await connect();
     const firstJoin = next(first); first.send(JSON.stringify({ type: 'join', room }));
-    const firstJoined = await firstJoin; assert.equal(firstJoined.type, 'joined'); assert.equal(firstJoined.count, 1); assert.match(firstJoined.iceToken, /^[A-Za-z0-9_-]+$/);
+    const firstJoined = await firstJoin; assert.equal(firstJoined.type, 'joined'); assert.equal(firstJoined.count, 1); assert.match(firstJoined.iceToken, /^[A-Za-z0-9_-]+$/); assert.match(firstJoined.pairCode, /^[A-Z2-9]{8}$/);
+    const pairResolve=await fetch(`http://127.0.0.1:${port}/pair/resolve`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({code:firstJoined.pairCode.slice(0,4)+'-'+firstJoined.pairCode.slice(4)})});
+    const pairData=await pairResolve.json();assert.equal(pairData.room,room);assert.ok(pairData.expires>Date.now());
+    process.env.METRICS_TOKEN='metrics-test';
+    const metricsDenied=await fetch(`http://127.0.0.1:${port}/metrics`);assert.equal(metricsDenied.status,403);
+    const metrics=await fetch(`http://127.0.0.1:${port}/metrics`,{headers:{authorization:'Bearer metrics-test'}});assert.equal(metrics.status,200);const metricsText=await metrics.text();assert.match(metricsText,/blinksend_rooms 1/);assert.match(metricsText,/blinksend_pairResolves 1/);delete process.env.METRICS_TOKEN;
     const nearRegister=await fetch(`http://127.0.0.1:${port}/nearby/register`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({room,name:'Test laptop',listed:true})});
     assert.equal(nearRegister.status,200);const nearInfo=await nearRegister.json();assert.match(nearInfo.code,/^[A-Z0-9]{1,8}$/);
     const nearList=await fetch(`http://127.0.0.1:${port}/nearby`);const nearItems=(await nearList.json()).items;assert.equal(nearItems.length,1);assert.equal(nearItems[0].name,'Test laptop');
