@@ -157,3 +157,13 @@ footer { border-top: 1px solid var(--divider); padding: 23px 0 27px; color: var(
   [data-theme="dark"] .qr-wrap { background: #fff; }
 .qr-wrap img { width: 160px; height: 160px; }
 }
+
+.transfer-actions { display:flex; gap:10px; margin-top:10px; }
+.transfer-actions .button { flex:1; }
+.share-row { display:grid; grid-template-columns:1fr auto; gap:8px; margin-top:10px; }
+.share-row input { min-width:0; min-height:42px; padding:9px 11px; border:1px solid var(--button-border); border-radius:7px; background:var(--surface); color:var(--text); }
+.share-row input::placeholder { color:var(--subtle); }
+.received-text { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:10px; padding:12px 14px; border:1px solid var(--border); border-radius:8px; background:var(--surface); font-size:14px; }
+.received-text span { color:var(--muted); }
+.received-text a { color:var(--accent); max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1 1 220px; }
+@media (max-width:520px){ .share-row{grid-template-columns:1fr;} .share-row .button{width:100%;} }
