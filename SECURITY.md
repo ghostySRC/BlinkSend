@@ -21,7 +21,8 @@ BlinkSend is designed for direct, ephemeral transfers between two browsers.
 - File data is carried by WebRTC data channels and checked with SHA-256 at the application layer.
 - The signaling server forwards connection metadata but does not normally receive file contents.
 - A configured TURN relay carries encrypted WebRTC traffic and can observe connection metadata and traffic volume.
-- Partial-transfer resume is currently in-page only. Reloading a browser loses the active resume state.
+- Partial-transfer resume works in-page everywhere the transfer path supports it. On browsers that persist File System Access handles in IndexedDB, BlinkSend can also recover the active transfer after a reload once the user grants file access again.
+- Optional device names and transfer history are local browser data; device names are sent only to the currently connected peer.
 
 ## Public deployment
 

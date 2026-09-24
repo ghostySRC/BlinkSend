@@ -19,11 +19,19 @@
       <div class="top-actions">
         <label class="visually-hidden" for="language" data-i18n="language">Language</label>
         <select id="language" aria-label="Language"><option value="en">English</option><option value="sv">Svenska</option></select>
-        <button id="theme-toggle" type="button" class="header-button" aria-label="Switch to dark mode" title="Switch to dark mode">Dark</button>
+        <button id="theme-toggle" type="button" class="header-button" aria-label="Switch to dark mode" title="Switch to dark mode">Dark</button><button id="settings-toggle" type="button" class="header-button" aria-label="Settings" data-i18n-aria="settings">•••</button>
         <a class="top-link" href="https://github.com/ghostySRC/BlinkSend">GitHub</a>
       </div>
     </header>
 
+    <aside id="settings-panel" class="settings-panel" hidden>
+      <div class="settings-head"><strong data-i18n="settings">Settings</strong><button id="settings-close" type="button" class="text-button" data-i18n="close">Close</button></div>
+      <label class="setting-field"><span data-i18n="deviceName">Device name</span><input id="device-name" maxlength="64" autocomplete="off" placeholder="My device" data-i18n-placeholder="deviceNamePlaceholder"></label>
+      <label class="setting-check"><input id="notify-complete" type="checkbox"><span data-i18n="completionFeedback">Sound / vibration on completion</span></label>
+      <div class="history-head"><strong data-i18n="history">Transfer history</strong><button id="clear-history" type="button" class="text-button" data-i18n="clearHistory">Clear</button></div>
+      <div id="history-list" class="history-list"><p class="hint" data-i18n="noHistory">No transfers yet.</p></div>
+      <p class="hint" data-i18n="historyPrivate">Stored only in this browser.</p>
+    </aside>
     <section class="workspace" aria-label="File transfer" data-i18n-aria="workspace">
       <div class="intro">
         <h1 data-i18n="headline">Move files directly.</h1>
@@ -74,7 +82,7 @@
 
         <section id="transfer-card" class="card transfer" aria-labelledby="transfer-title">
           <div class="section-heading"><h2 id="transfer-title" data-i18n="files">Files</h2><p id="direction-copy" data-i18n="direction">Choose what to send after the devices are verified.</p></div>
-          <div class="connection"><span id="status-dot" class="status-dot" aria-hidden="true"></span><span id="status" role="status" data-i18n="connectingRoom">Connecting to room…</span></div>
+          <div class="connection"><span id="status-dot" class="status-dot" aria-hidden="true"></span><span id="status" role="status" data-i18n="connectingRoom">Connecting to room…</span><span id="peer-name" class="connection-meta"></span><span id="connection-quality" class="connection-meta"></span></div>
           <div id="verify-peer" class="verify-peer" hidden>
             <span class="verify-label" data-i18n="verifyPeer">Verify device</span>
             <strong id="verify-code" aria-live="polite">000 000</strong>
@@ -86,7 +94,7 @@
             <label class="drop" id="drop"><input id="file" type="file" multiple disabled><span class="upload-icon" aria-hidden="true">↑</span><strong data-i18n="chooseFiles">Choose files</strong><span data-i18n="dropHere">or drop them here on a computer</span></label>
             <input id="folder" class="visually-hidden" type="file" webkitdirectory directory multiple disabled>
             <div class="transfer-actions"><button id="choose-folder" type="button" class="button secondary" disabled data-i18n="chooseFolder">Choose folder</button></div>
-            <div class="share-row"><input id="share-text" type="url" inputmode="url" autocomplete="off" placeholder="Paste a link" data-i18n-placeholder="linkPlaceholder" disabled><button id="send-text" type="button" class="button secondary" disabled data-i18n="sendLink">Send link</button></div>
+            <div class="share-row"><textarea id="share-text" rows="2" maxlength="262144" autocomplete="off" placeholder="Paste text or a link" data-i18n-placeholder="textPlaceholder" disabled></textarea><button id="send-text" type="button" class="button secondary" disabled data-i18n="sendText">Send</button></div>
           </div>
 
           <div id="receive-wait" class="receive-wait" hidden><span class="receive-arrow" aria-hidden="true">↓</span><strong data-i18n="waitingForSender">Ready to receive</strong><p data-i18n="waitingForSenderHelp">Keep this page open. Incoming files will appear here.</p></div>
@@ -102,7 +110,13 @@
       </div>
 
       <p id="notice" class="notice" role="status" aria-live="polite"></p>
-      <div id="received-text" class="received-text" hidden><span data-i18n="receivedLink">Received link</span><a id="received-link" target="_blank" rel="noopener noreferrer"></a><button id="copy-received" type="button" class="text-button" data-i18n="copyLink">Copy link</button></div>
+      <div id="received-text" class="received-text" hidden>
+        <span data-i18n="receivedText">Received text</span>
+        <pre id="received-content"></pre>
+        <a id="received-link" target="_blank" rel="noopener noreferrer" hidden></a>
+        <div class="received-actions"><button id="copy-received" type="button" class="text-button" data-i18n="copyText">Copy</button><button id="share-received" type="button" class="text-button" data-i18n="share">Share</button></div>
+      </div>
+      <button id="share-last-file" type="button" class="button secondary share-last-file" hidden data-i18n="shareReceivedFile">Share received file</button>
     </section>
     <footer data-i18n="footer">BlinkSend · Two devices per room</footer>
   </main>

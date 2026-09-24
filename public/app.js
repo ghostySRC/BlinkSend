@@ -1,6 +1,6 @@
 (() => {
   const $ = id => document.getElementById(id);
-  const els = Object.fromEntries(['mode-picker','mode-send','mode-receive','receive-join','join-link','join-room','join-back','resume-card','resume-detail','resume-transfer','discard-resume','transfer-workspace','invite-card','transfer-card','send-controls','receive-wait','qr','copy','new-room','status','status-dot','verify-peer','verify-code','verify-match','file','folder','choose-folder','share-text','send-text','received-text','received-link','copy-received','drop','transfer-info','file-name','file-size','progress','progress-text','cancel','queue-status','notice','incoming','incoming-title','incoming-detail','save-note','accept','decline'].map(id => [id, $(id)]));
+  const els = Object.fromEntries(['settings-toggle','settings-panel','settings-close','device-name','notify-complete','history-list','clear-history','mode-picker','mode-send','mode-receive','receive-join','join-link','join-room','join-back','resume-card','resume-detail','resume-transfer','discard-resume','transfer-workspace','invite-card','transfer-card','send-controls','receive-wait','qr','copy','new-room','status','status-dot','peer-name','connection-quality','verify-peer','verify-code','verify-match','file','folder','choose-folder','share-text','send-text','received-text','received-content','received-link','copy-received','share-received','share-last-file','drop','transfer-info','file-name','file-size','progress','progress-text','cancel','queue-status','notice','incoming','incoming-title','incoming-detail','save-note','accept','decline'].map(id => [id, $(id)]));
   const translations = {
   "en": {
     "language": "Language",
@@ -39,12 +39,23 @@
     "invalidInvite": "That does not look like a valid BlinkSend invite link.",
     "chooseFiles": "Choose files",
     "chooseFolder": "Choose folder",
-    "linkPlaceholder": "Paste a link",
-    "sendLink": "Send link",
-    "receivedLink": "Received link",
-    "copyLink": "Copy link",
-    "linkSent": "Link sent.",
-    "invalidLink": "Enter a valid http:// or https:// link.",
+    "textPlaceholder": "Paste text or a link",
+    "sendText": "Send",
+    "receivedText": "Received text",
+    "copyText": "Copy",
+    "share": "Share",
+    "shareReceivedFile": "Share received file",
+    "textSent": "Text sent.",
+    "textTooLarge": "Text is too large. Keep it under 256 KB.",
+    "settings": "Settings",
+    "close": "Close",
+    "deviceName": "Device name",
+    "deviceNamePlaceholder": "My device",
+    "completionFeedback": "Sound / vibration on completion",
+    "history": "Transfer history",
+    "clearHistory": "Clear",
+    "noHistory": "No transfers yet.",
+    "historyPrivate": "Stored only in this browser.",
     "dropHere": "or drop them here on a computer",
     "transferProgress": "Transfer progress",
     "cancel": "Cancel",
@@ -146,12 +157,23 @@
     "invalidInvite": "Det där ser inte ut som en giltig BlinkSend-inbjudningslänk.",
     "chooseFiles": "Välj filer",
     "chooseFolder": "Välj mapp",
-    "linkPlaceholder": "Klistra in en länk",
-    "sendLink": "Skicka länk",
-    "receivedLink": "Mottagen länk",
-    "copyLink": "Kopiera länk",
-    "linkSent": "Länken skickades.",
-    "invalidLink": "Ange en giltig http://- eller https://-länk.",
+    "textPlaceholder": "Klistra in text eller en länk",
+    "sendText": "Skicka",
+    "receivedText": "Mottagen text",
+    "copyText": "Kopiera",
+    "share": "Dela",
+    "shareReceivedFile": "Dela mottagen fil",
+    "textSent": "Texten skickades.",
+    "textTooLarge": "Texten är för stor. Håll den under 256 KB.",
+    "settings": "Inställningar",
+    "close": "Stäng",
+    "deviceName": "Enhetsnamn",
+    "deviceNamePlaceholder": "Min enhet",
+    "completionFeedback": "Ljud / vibration när överföringen är klar",
+    "history": "Överföringshistorik",
+    "clearHistory": "Rensa",
+    "noHistory": "Inga överföringar än.",
+    "historyPrivate": "Sparas bara i den här webbläsaren.",
     "dropHere": "eller dra dem hit på en dator",
     "transferProgress": "Överföringsförlopp",
     "cancel": "Avbryt",
@@ -266,11 +288,12 @@
   }
   const chunkSize = 64 * 1024;
   const maxMemoryFile = 200 * 1024 * 1024;
+  const maxTextBytes = 256 * 1024;
   const supportsOpfs = !!navigator.storage?.getDirectory;
   const format = bytes => bytes < 1024 ? `${bytes} B` : bytes < 1048576 ? `${(bytes / 1024).toFixed(1)} KB` : bytes < 1073741824 ? `${(bytes / 1048576).toFixed(1)} MB` : `${(bytes / 1073741824).toFixed(2)} GB`;
   let socket, pc, channel, pending, active, incomingQueue = Promise.resolve(), signalQueue = Promise.resolve(), connectTimer, iceToken = '';
   let readyLabel = 'ready', peerVerified = false, localVerified = false, remoteVerified = false, verificationCode = '';
-  let outgoing = [], batchTotal = 0, batchDone = 0, mode = '', outgoingBatch = null, incomingBatch = null, resumeSession = null;
+  let outgoing = [], batchTotal = 0, batchDone = 0, mode = '', outgoingBatch = null, incomingBatch = null, resumeSession = null, peerName = '', lastReceivedFile = null;
   const roomPattern = /^[a-f0-9]{32}$/;
   let room = location.hash.slice(1).toLowerCase();
   if (!roomPattern.test(room)) room = '';
@@ -286,10 +309,36 @@
     els['send-controls'].hidden = value !== 'send'; els['receive-wait'].hidden = value !== 'receive';
     if (room) { try { sessionStorage.setItem(`blinksend-role:${room}`, value); } catch {} }
   }
+  const sanitizeDeviceName = value => String(value || '').replace(/[\x00-\x1f\x7f]/g,'').trim().slice(0,64);
+  let deviceName = sanitizeDeviceName(readSetting('blinksend-device-name')) || 'BlinkSend device';
+  let completionFeedback = readSetting('blinksend-completion-feedback') === '1';
+  async function renderHistory() {
+    if (!window.BlinkStore?.listHistory) return;
+    try {
+      const items=await BlinkStore.listHistory(20);
+      els['history-list'].innerHTML='';
+      if(!items.length){const p=document.createElement('p');p.className='hint';p.textContent=tr('noHistory');els['history-list'].append(p);return;}
+      for(const item of items){
+        const row=document.createElement('div');row.className='history-item';
+        const name=document.createElement('strong');name.textContent=item.name || 'Transfer';
+        const size=document.createElement('span');size.textContent=format(item.size||0);
+        const detail=document.createElement('span');detail.textContent=`${item.direction==='send'?'Sent':'Received'} · ${item.verified?'SHA-256 verified':'Completed'}`;
+        const when=document.createElement('span');when.textContent=new Date(item.createdAt).toLocaleString(language==='sv'?'sv-SE':'en');
+        row.append(name,size,detail,when);els['history-list'].append(row);
+      }
+    } catch {}
+  }
+  async function recordHistory(entry){try{await BlinkStore?.addHistory?.(entry);await renderHistory();}catch{}}
+  function completionCue(){
+    if(!completionFeedback)return;
+    try{navigator.vibrate?.([35,25,35]);}catch{}
+    try{const C=window.AudioContext||window.webkitAudioContext;if(C){const ctx=new C(),o=ctx.createOscillator(),g=ctx.createGain();o.frequency.value=660;g.gain.value=.035;o.connect(g);g.connect(ctx.destination);o.start();o.stop(ctx.currentTime+.09);o.onended=()=>ctx.close();}}catch{}
+  }
   function status(key, ready = false, vars = {}) {
     lastStatus = { key, ready, vars };
     els.status.textContent = tr(key, vars);
     els['status-dot'].classList.toggle('ready', ready);
+    els['peer-name'].textContent = peerName ? peerName : '';
     const unlocked = ready && peerVerified && mode === 'send';
     els.file.disabled = !unlocked || !!active || !!pending;
     els.folder.disabled = els.file.disabled;
@@ -369,6 +418,7 @@
     ch.bufferedAmountLowThreshold = 2 * 1024 * 1024;
     ch.onopen = () => {
       clearTimeout(connectTimer); connectionPath(); notice();
+      ch.send(JSON.stringify({type:'hello',name:deviceName}));
       if (active) { active.paused = true; active.stage = 'resuming'; renderTransfer(); }
     };
     ch.onclose = () => { pauseTransfer(); status(active ? 'paused' : 'peerLeft'); };
@@ -535,6 +585,7 @@
   }
   async function control(raw) {
     let msg; try { msg = JSON.parse(raw); } catch { return; }
+    if (msg.type === 'hello') { peerName=sanitizeDeviceName(msg.name); els['peer-name'].textContent=peerName; return; }
     if (msg.type === 'batch-request') {
       if (active || pending || !msg.id || typeof msg.name !== 'string' || !Number.isSafeInteger(msg.count) || msg.count < 1 || !Number.isSafeInteger(msg.totalSize) || msg.totalSize < 0) return;
       pending = { type:'batch', id:msg.id, name:msg.name.replace(/[\\/\x00-\x1f\x7f]/g,'_').trim() || 'Folder', count:msg.count, totalSize:msg.totalSize };
@@ -576,20 +627,33 @@
           const file = await active.opfs.handle.getFile(); const url = URL.createObjectURL(file); const anchor = document.createElement('a'); anchor.href = url; anchor.download = active.name; document.body.append(anchor); anchor.click(); anchor.remove(); setTimeout(() => URL.revokeObjectURL(url), 60_000); active.opfs.root.removeEntry(active.opfs.tempName).catch(() => {});
         } else if (!active.writer) { const url = URL.createObjectURL(new Blob(active.chunks)); const anchor = document.createElement('a'); anchor.href = url; anchor.download = active.name; document.body.append(anchor); anchor.click(); anchor.remove(); setTimeout(() => URL.revokeObjectURL(url), 60_000); }
         channel.send(JSON.stringify({ type: 'saved', id: msg.id, sha256: localHash }));
+        let shareFile=null;
+        try {
+          if (active.persistentHandle) shareFile=await active.persistentHandle.getFile();
+          else if (active.opfs?.handle) shareFile=await active.opfs.handle.getFile();
+          else if (active.chunks) shareFile=new File(active.chunks,active.name,{type:'application/octet-stream'});
+        } catch {}
+        lastReceivedFile=shareFile;
+        els['share-last-file'].hidden=!(shareFile && navigator.share && (!navigator.canShare || navigator.canShare({files:[shareFile]})));
+        await recordHistory({name:active.relativePath||active.name,size:active.size,direction:'receive',verified:true,sha256:localHash});
+        completionCue();
         await clearPersistent();
         stopTransfer('verifiedReceived', false);
       } catch { stopTransfer('saveFailed'); }
     }
     if (msg.type === 'saved' && active?.id === msg.id && active.direction === 'send') {
       const sentHash = active.hasher.hex(); if (msg.sha256 !== sentHash) { stopTransfer('hashMismatch', false); return; }
+      await recordHistory({name:active.relativePath||active.file.name,size:active.file.size,direction:'send',verified:true,sha256:sentHash});
+      completionCue();
       finishOutgoing('verifiedSent', { current: batchDone + 1, total: batchTotal });
     }
-    if (msg.type === 'text' && typeof msg.text === 'string' && msg.text.length <= 4096) {
-      try {
-        const url = new URL(msg.text);
-        if (!['http:', 'https:'].includes(url.protocol)) return;
-        els['received-link'].href = url.href; els['received-link'].textContent = url.href; els['received-text'].hidden = false;
-      } catch { /* Ignore malformed links. */ }
+    if (msg.type === 'text' && typeof msg.text === 'string') {
+      const bytes=new TextEncoder().encode(msg.text).byteLength;if(bytes>maxTextBytes)return;
+      els['received-content'].textContent=msg.text;els['received-text'].hidden=false;
+      let link='';try{const u=new URL(msg.text.trim());if(['http:','https:'].includes(u.protocol))link=u.href;}catch{}
+      els['received-link'].hidden=!link;if(link){els['received-link'].href=link;els['received-link'].textContent=link;}
+      await recordHistory({name:link||'Text',size:bytes,direction:'receive',verified:false,type:'text'});
+      completionCue();
     }
   }
   async function receiveChunk(data) {
@@ -668,19 +732,26 @@
     catch (error) { if (error.name !== 'AbortError') notice('saveLocationFailed'); }
   };
   els.folder.onchange = () => { const files=[...els.folder.files]; const name=files[0]?.webkitRelativePath?.split('/')[0] || ''; enqueueEntries(files.map(file=>({file,relativePath:file.webkitRelativePath||''})), name); };
-  function sendText() {
-    if (channel?.readyState !== 'open') return;
-    const value = els['share-text'].value.trim();
-    try {
-      const url = new URL(value);
-      if (!['http:', 'https:'].includes(url.protocol)) throw new Error();
-      channel.send(JSON.stringify({ type: 'text', text: url.href }));
-      els['share-text'].value = ''; notice('linkSent');
-    } catch { notice('invalidLink'); }
+  async function sendTextValue(value) {
+    if(channel?.readyState!=='open'||!peerVerified)return;
+    const text=String(value||'');if(!text.trim())return;
+    const bytes=new TextEncoder().encode(text).byteLength;if(bytes>maxTextBytes){notice('textTooLarge');return;}
+    channel.send(JSON.stringify({type:'text',text}));
+    await recordHistory({name:'Text',size:bytes,direction:'send',verified:false,type:'text'});
+    notice('textSent');
   }
+  async function sendText(){const value=els['share-text'].value;await sendTextValue(value);els['share-text'].value='';}
   els['send-text'].onclick = sendText;
   els['share-text'].onkeydown = e => { if (e.key === 'Enter') sendText(); };
-  els['copy-received'].onclick = async () => { try { await navigator.clipboard.writeText(els['received-link'].href); } catch { /* Browser may deny clipboard access. */ } };
+  els['copy-received'].onclick=async()=>{try{await navigator.clipboard.writeText(els['received-content'].textContent||'');}catch{}};
+  els['share-received'].onclick=async()=>{const text=els['received-content'].textContent||'';try{if(navigator.share)await navigator.share({text});}catch{}};
+  els['share-last-file'].onclick=async()=>{try{if(lastReceivedFile&&navigator.share)await navigator.share({files:[lastReceivedFile],title:lastReceivedFile.name});}catch{}};
+  document.addEventListener('paste',e=>{
+    if(mode!=='send'||!peerVerified||['INPUT','TEXTAREA'].includes(document.activeElement?.tagName))return;
+    const files=[...(e.clipboardData?.files||[])];
+    if(files.length){e.preventDefault();enqueueFiles(files);return;}
+    const text=e.clipboardData?.getData('text/plain');if(text){e.preventDefault();sendTextValue(text);}
+  });
   els.drop.ondragover = e => { e.preventDefault(); if (!els.file.disabled) els.drop.classList.add('drag'); };
   els.drop.ondragleave = () => els.drop.classList.remove('drag');
   els.drop.ondrop = e => { e.preventDefault(); els.drop.classList.remove('drag'); if (!els.file.disabled) enqueueFiles(e.dataTransfer.files); };
@@ -737,6 +808,13 @@
   }
   els['resume-transfer'].onclick = restoreSession;
   els['discard-resume'].onclick = async () => { await clearPersistent(); await clearBatchContext(); resumeSession=null; incomingBatch=null; els['resume-card'].hidden=true; };
+  els['settings-toggle'].onclick=()=>{els['settings-panel'].hidden=!els['settings-panel'].hidden;if(!els['settings-panel'].hidden)renderHistory();};
+  els['settings-close'].onclick=()=>{els['settings-panel'].hidden=true;};
+  els['device-name'].value=deviceName;
+  els['device-name'].onchange=()=>{deviceName=sanitizeDeviceName(els['device-name'].value)||'BlinkSend device';els['device-name'].value=deviceName;saveSetting('blinksend-device-name',deviceName);if(channel?.readyState==='open')channel.send(JSON.stringify({type:'hello',name:deviceName}));};
+  els['notify-complete'].checked=completionFeedback;
+  els['notify-complete'].onchange=()=>{completionFeedback=els['notify-complete'].checked;saveSetting('blinksend-completion-feedback',completionFeedback?'1':'0');};
+  els['clear-history'].onclick=async()=>{try{await BlinkStore?.clearHistory?.();}catch{}await renderHistory();};
   async function initMode() {
     if (room) {
       let role='receive'; try { role=sessionStorage.getItem(`blinksend-role:${room}`) || 'receive'; } catch {}
