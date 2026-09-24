@@ -25,10 +25,10 @@
         const take = Math.min(64 - this.bufferLength, data.length);
         this.buffer.set(data.subarray(0, take), this.bufferLength);
         this.bufferLength += take; pos = take;
-        if (this.bufferLength === 64) { this._compress(this.buffer); this.bufferLength = 0; }
+        if (this.bufferLength === 64) { this._compress(this.buffer,0); this.bufferLength = 0; }
       }
       while (pos + 64 <= data.length) {
-        this._compress(data.subarray(pos, pos + 64));
+        this._compress(data,pos);
         pos += 64;
       }
       if (pos < data.length) {
@@ -37,17 +37,17 @@
       }
       return this;
     }
-    _compress(chunk) {
+    _compress(chunk,offset=0) {
       const w = this.w;
       for (let i=0;i<16;i++) {
-        const j=i*4; w[i]=((chunk[j]<<24)|(chunk[j+1]<<16)|(chunk[j+2]<<8)|chunk[j+3])>>>0;
+        const j=offset+i*4; w[i]=((chunk[j]<<24)|(chunk[j+1]<<16)|(chunk[j+2]<<8)|chunk[j+3])>>>0;
       }
       for (let i=16;i<64;i++) {
-        const a=w[i-15], b=w[i-2];
-        const s0=rotr(a,7)^rotr(a,18)^(a>>>3), s1=rotr(b,17)^rotr(b,19)^(b>>>10);
+        const x=w[i-15], y=w[i-2];
+        const s0=rotr(x,7)^rotr(x,18)^(x>>>3), s1=rotr(y,17)^rotr(y,19)^(y>>>10);
         w[i]=(w[i-16]+s0+w[i-7]+s1)>>>0;
       }
-      let [a,b,c,d,e,f,g,h]=this.h;
+      let a=this.h[0],b=this.h[1],c=this.h[2],d=this.h[3],e=this.h[4],f=this.h[5],g=this.h[6],h=this.h[7];
       for (let i=0;i<64;i++) {
         const S1=rotr(e,6)^rotr(e,11)^rotr(e,25), ch=(e&f)^(~e&g);
         const t1=(h+S1+ch+K[i]+w[i])>>>0;
@@ -55,21 +55,23 @@
         const t2=(S0+maj)>>>0;
         h=g; g=f; f=e; e=(d+t1)>>>0; d=c; c=b; b=a; a=(t1+t2)>>>0;
       }
-      const v=[a,b,c,d,e,f,g,h];
-      for (let i=0;i<8;i++) this.h[i]=(this.h[i]+v[i])>>>0;
+      this.h[0]=(this.h[0]+a)>>>0;this.h[1]=(this.h[1]+b)>>>0;
+      this.h[2]=(this.h[2]+c)>>>0;this.h[3]=(this.h[3]+d)>>>0;
+      this.h[4]=(this.h[4]+e)>>>0;this.h[5]=(this.h[5]+f)>>>0;
+      this.h[6]=(this.h[6]+g)>>>0;this.h[7]=(this.h[7]+h)>>>0;
     }
     digest() {
       if (!this.finished) {
         const bits = this.bytesHashed * 8;
         this.buffer[this.bufferLength++] = 0x80;
         if (this.bufferLength > 56) {
-          this.buffer.fill(0, this.bufferLength); this._compress(this.buffer); this.bufferLength = 0;
+          this.buffer.fill(0, this.bufferLength); this._compress(this.buffer,0); this.bufferLength = 0;
         }
         this.buffer.fill(0, this.bufferLength, 56);
         const hi = Math.floor(bits / 0x100000000), lo = bits >>> 0;
         this.buffer[56]=(hi>>>24)&255; this.buffer[57]=(hi>>>16)&255; this.buffer[58]=(hi>>>8)&255; this.buffer[59]=hi&255;
         this.buffer[60]=(lo>>>24)&255; this.buffer[61]=(lo>>>16)&255; this.buffer[62]=(lo>>>8)&255; this.buffer[63]=lo&255;
-        this._compress(this.buffer); this.finished = true;
+        this._compress(this.buffer,0); this.finished = true;
       }
       const out = new Uint8Array(32);
       for (let i=0;i<8;i++) { const v=this.h[i]; out[i*4]=v>>>24; out[i*4+1]=v>>>16; out[i*4+2]=v>>>8; out[i*4+3]=v; }
