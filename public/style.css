@@ -220,3 +220,8 @@ footer { border-top: 1px solid var(--divider); padding: 23px 0 27px; color: var(
 .nearby-result span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .nearby-code{min-height:20px;margin:2px 0 16px;color:var(--accent);font-size:13px;font-weight:600}
 .scanner-modal video{display:block;width:100%;max-height:55vh;border-radius:8px;background:#000;object-fit:cover}
+
+.code-row{margin-top:8px}
+.pair-code-wrap{display:grid;gap:4px;margin:14px 0 2px;padding:12px;border:1px solid var(--border);border-radius:8px;background:var(--soft)}
+.pair-code-wrap span,.pair-code-wrap small{color:var(--muted);font-size:12px}
+.pair-code-wrap strong{font:700 22px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.08em;color:var(--heading)}

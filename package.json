@@ -1,13 +1,14 @@
 {
   "name": "blinksend",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "description": "Direct browser-to-browser file sharing",
   "scripts": {
     "start": "node server.js",
-    "test": "node --test",
-    "bench": "node scripts/benchmark.mjs"
+    "test": "node scripts/run-tests.mjs",
+    "bench": "node scripts/benchmark.mjs",
+    "loadtest": "node scripts/load-benchmark.mjs"
   },
   "engines": {
     "node": ">=20"

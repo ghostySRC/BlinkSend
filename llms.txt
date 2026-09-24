@@ -4,50 +4,62 @@
 
 Repository: https://github.com/ghostySRC/BlinkSend
 Default branch: main
+Package version: 0.2.0
 License: MIT
 Runtime: Node.js 20+, browser JavaScript, WebRTC data channels
 
 ## Product model
 
-BlinkSend is a two-peer, self-hosted transfer app. The Node.js server serves the application, coordinates WebRTC signaling, generates QR codes, issues protected short-lived ICE/TURN credentials, and optionally maintains five-minute Nearby discovery metadata. Normal file contents travel over the WebRTC data channel rather than through the application server.
+BlinkSend is a two-peer, self-hosted transfer app. The Node.js process serves the UI, coordinates WebRTC signaling, generates QR codes, issues short-lived protected ICE/TURN credentials, maps temporary manual pairing codes to random rooms, optionally maintains five-minute Nearby discovery metadata, and exposes optional token-protected Prometheus metrics. Normal file contents travel over the WebRTC data channel rather than through the BlinkSend application server.
+
+The current server state is intentionally single-process/in-memory. Do not claim multi-replica support unless shared signaling, room state, pairing codes, discovery state, and abuse limits are implemented.
 
 ## Main capabilities
 
-- simple Send / Receive entry flow
-- invite-link pairing, QR generation, in-app QR scanning, and opt-in Nearby discovery
+- Send / Receive entry flow
+- random 128-bit invite links
+- QR generation and in-app QR scanning
+- eight-character manual pairing codes that expire after 10 minutes
+- opt-in same-observed-address Nearby discovery
 - optional local device names
-- mutual six-digit peer verification derived from WebRTC DTLS fingerprints
+- mutual six-digit DTLS-fingerprint verification before new transfers
 - SHA-256 file verification with bounded per-file retry
-- browser-safe numbered chunks plus chunk bitmap / missing-range resume
-- same-tab reconnect and restart-safe resume on supported File System Access browsers
-- File System Access and OPFS large-file streaming
+- numbered chunks, compact chunk bitmaps, missing-range resume, and network-change ICE recovery
+- restart-safe resume where persistent File System Access handles are supported
+- File System Access / OPFS large-file streaming
 - folder transfer, recursive drag-and-drop, and nested folder reconstruction
+- path traversal rejection for incoming relative paths
 - clipboard/text transfer up to 256 KB using small UTF-8 control frames
-- paste-to-send for clipboard files/images/text
+- paste-to-send and native Web Share
+- installable PWA + local Web Share Target staging
 - automatic 512 KiB connection calibration, adaptive WebRTC buffering, Direct/Relay quality, smoothed speed, ETA, and batch progress
-- network-interface ICE recovery
 - local-only transfer history and optional completion feedback
-- Web Share for received files/text
-- installable PWA and local Web Share Target staging
-- English/Swedish and light/dark UI
-- rate-limited signaling, protected TURN credential access, and malformed-message controls
+- protected TURN credential endpoint
+- server rate limits and malformed-signaling controls
+- explicit reverse-proxy trust via TRUST_PROXY
+- token-protected Prometheus metrics
+- graceful SIGTERM/SIGINT drain with WebSocket restart notification
+- hardened Docker/Compose deployment
+- deterministic protocol benchmark + real signaling load benchmark
 
 ## Important files
 
-- README.md — current product behavior, setup, architecture, deployment, limits, tests
-- SECURITY.md — threat model and vulnerability reporting
+- README.md — current behavior, setup, deployment, limits, test commands
+- SECURITY.md — threat model and public-deployment cautions
 - AGENTS.md — coding-agent invariants
-- server.js — HTTP server, signaling, QR, Nearby, ICE/TURN and abuse controls
+- server.js — HTTP server, signaling, manual pairing, Nearby, metrics, ICE/TURN, abuse controls, shutdown
 - public/index.html — UI
 - public/app.js — pairing, WebRTC transfer protocol, resume, batching and UX state
-- public/protocol.js — pure transfer helpers: tuning, ETA, range maps, path validation, UTF-8 framing
+- public/protocol.js — pure transfer helpers
 - public/sha256.js — incremental SHA-256
-- public/persistence.js — IndexedDB transfer sessions and local history
-- public/manifest.webmanifest — PWA and Share Target metadata
-- public/sw.js — PWA shell cache and local Share Target interception
-- scripts/benchmark.mjs — deterministic 5 GiB-equivalent chunk-map / 10k-file benchmark
-- test/ — signaling, security, integrity, protocol, PWA and stress tests
-- .github/workflows/ci.yml — CI
+- public/persistence.js — IndexedDB resume sessions + local history
+- public/manifest.webmanifest / public/sw.js — PWA and local Share Target
+- Dockerfile / compose.yaml / deploy/Caddyfile.example — deployment
+- scripts/benchmark.mjs — deterministic transfer-structure benchmark
+- scripts/load-benchmark.mjs — 10-room / 20-WebSocket signaling load benchmark
+- scripts/run-tests.mjs — explicit test file discovery
+- test/ — protocol, signaling, production-server, security and PWA tests
+- .github/workflows/ci.yml — tests, benchmarks, Docker build, container smoke test
 
 ## Development
 
@@ -55,26 +67,32 @@ BlinkSend is a two-peer, self-hosted transfer app. The Node.js server serves the
 npm ci
 npm test
 npm run bench
+npm run loadtest
 npm start
 ```
 
-Open http://localhost:3000.
+## Server environment
 
-## Transfer invariants
+- PORT
+- TURN_URLS / TURN_SECRET
+- TRUST_PROXY — enable only behind a trusted proxy that overwrites X-Forwarded-For
+- METRICS_TOKEN — enables /metrics
+- LOG_FORMAT — text or json
+- LOG_LEVEL — info or silent
 
-1. Exactly two WebSocket peers may occupy a room.
-2. Transfer UI remains locked until mutual fingerprint-code confirmation.
-3. File payloads use WebRTC data channels; the application server should not receive normal file contents.
-4. Every completed file must match SHA-256 before being reported as verified.
-5. Incoming relative paths are normalized and traversal segments are rejected.
-6. Resume state may request missing chunk ranges; persisted handles are capability-dependent.
-7. Nearby discovery is opt-in, same-observed-address scoped, short-lived, and never replaces fingerprint verification.
-8. Share Target payloads remain device-local until they enter the normal P2P flow.
+## Security invariants
 
-## Browser capability notes
-
-Feature availability depends on browser APIs including File System Access, OPFS, BarcodeDetector, Web Share / Share Target, service workers, IndexedDB, and WebRTC. Maintain graceful fallbacks instead of assuming Chromium-only APIs.
+1. At most two signaling peers per room.
+2. Manual/Nearby codes never replace fingerprint verification.
+3. New transfers stay locked until both browsers confirm the six-digit DTLS-fingerprint-derived code.
+4. Normal file bytes stay off the BlinkSend application server.
+5. Completed files must pass SHA-256.
+6. Incoming paths reject traversal.
+7. TURN credentials require a short-lived room-issued token.
+8. TRUST_PROXY is off by default.
+9. /metrics is disabled unless a token is configured and never emits room IDs or client IP labels.
+10. Share Target staging remains device-local.
 
 ## AI / coding-agent guidance
 
-Read README.md, SECURITY.md, AGENTS.md, server.js, public/app.js, public/protocol.js, public/persistence.js, and relevant tests before protocol changes. Preserve the security invariants above. Update README.md in the same logical change as user-visible behavior and add tests for protocol/security changes.
+Read README.md, SECURITY.md, AGENTS.md, server.js, public/app.js, public/protocol.js, and relevant tests before protocol/security changes. Keep user-facing flows simple. Update README.md in the same logical commit as user-visible or deployment behavior. Run the full test/benchmark/load-test suite for server or transfer-protocol changes.

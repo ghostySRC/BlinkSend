@@ -1,6 +1,7 @@
 <p align="center"><img src="public/favicon.svg" width="68" alt="BlinkSend logo"></p>
 <h1 align="center">BlinkSend</h1>
 <p align="center">A self-hosted file transfer tool for two browsers.</p>
+<p align="center"><strong>Current package version:</strong> 0.2.0</p>
 <p align="center"><a href="#features">Features</a> · <a href="#quick-start">Quick start</a> · <a href="#how-it-works">How it works</a> · <a href="#deploy-your-own-instance">Self-host</a></p>
 
 
@@ -19,7 +20,7 @@ BlinkSend can also be installed as a PWA on supporting browsers. No account is r
 
 ## Features
 
-- Simple Send / Receive entry flow for computer ↔ computer and phone ↔ computer sharing through an invite link or QR code.
+- Simple Send / Receive entry flow for computer ↔ computer and phone ↔ computer sharing through an invite link, QR code, or an eight-character manual pairing code. Manual codes expire after 10 minutes, the sender UI shows the local expiration time, and the six-digit fingerprint check is still required.
 - Installable PWA on supporting browsers, with an application-shell service worker for fast relaunch. Peer-to-peer transfers still require both devices to be online.
 - In-app QR scanning on browsers that expose the Barcode Detection API and camera access; unsupported browsers can still use the system camera or paste the link.
 - Optional Nearby discovery is off by default. A sender can advertise a device name and short-lived code for five minutes to receivers seen behind the same network address; peer verification is still mandatory.
@@ -75,7 +76,7 @@ sequenceDiagram
     A->>B: File over encrypted data channel
 ```
 
-The Node server serves the web interface and exchanges WebRTC connection details over `/signal`. File contents travel over the WebRTC data channel. When a TURN relay is configured and needed, the relay carries encrypted WebRTC traffic and consumes relay bandwidth. The server keeps room membership in memory, with a maximum of two sockets per room; inactive rooms expire after 30 minutes. A server restart disconnects active rooms.
+The Node server serves the web interface and exchanges WebRTC connection details over `/signal`. File contents travel over the WebRTC data channel. When a TURN relay is configured and needed, the relay carries encrypted WebRTC traffic and consumes relay bandwidth. The server keeps room membership in memory, with a maximum of two sockets per room; inactive rooms expire after 30 minutes. Each live room also gets an eight-character code that maps to the random 128-bit room ID for 10 minutes. On SIGTERM/SIGINT, BlinkSend sends a restart notice, closes peers with WebSocket code 1012, and gives connections up to three seconds to drain before terminating WebSockets and any remaining HTTP connections.
 
 For normal files, the recipient accepts the transfer before data starts. Folder transfers can be accepted once as a batch; on supported browsers the receiver chooses one destination and BlinkSend recreates nested directories automatically. Incoming relative paths are normalized and traversal segments such as `..` are rejected before any directory handle is opened. Files are split into numbered chunks. The receiver maintains a compact chunk bitmap and converts gaps into missing ranges during reconnect, allowing the sender to retransmit only those ranges. Network reconnects also attempt an ICE restart when the browser reports a network-interface change. When both sides use persistent File System Access handles, BlinkSend also stores the active session in IndexedDB so a page reload can resume the current transfer after the user grants access again. Browsers without persistent handles keep the in-page resume behavior only. Offline delivery is not supported, and only one file is active at a time.
 
@@ -91,6 +92,18 @@ The 200 MB memory fallback now applies only when the browser exposes neither a s
 
 ## Deploy your own instance
 
+BlinkSend now includes a production-oriented `Dockerfile`, `compose.yaml`, and `deploy/Caddyfile.example`. The container runs as the unprivileged Node user, drops Linux capabilities in Compose, uses a read-only root filesystem, and exposes a health check.
+
+### Docker / Compose
+
+```bash
+docker compose up -d --build
+```
+
+By default Compose binds BlinkSend to `127.0.0.1:3000` so a host reverse proxy can terminate HTTPS. Copy `deploy/Caddyfile.example`, replace the hostname, and set `TRUST_PROXY=1` only when that proxy is the only route to the Node process.
+
+### Direct Node deployment
+
 Run one long-lived Node process behind an HTTPS reverse proxy. The proxy must forward WebSocket upgrades at `/signal`. A static host such as GitHub Pages cannot run the signaling server by itself.
 
 1. Point a domain name to your server and install Node.js 20 or later.
@@ -105,7 +118,9 @@ Run one long-lived Node process behind an HTTPS reverse proxy. The proxy must fo
 
 4. Open `https://blinksend.example.com/health` to check the process, then test the site from two devices. The health endpoint returns `{"status":"ok"}`.
 
-Use one server process for now: room membership is held in that process's memory. Running multiple replicas behind a load balancer without shared room state will break pairing.
+If the reverse proxy is the only process allowed to connect to BlinkSend, set `TRUST_PROXY=1` and configure the proxy to **overwrite** `X-Forwarded-For`; BlinkSend accepts the forwarded value only when it parses as an IP address. Otherwise leave proxy trust disabled. With `METRICS_TOKEN` set, `/metrics` exposes token-protected, per-IP-rate-limited Prometheus-style counters/gauges for rooms, peers, signaling, pair-code lookups, rate limits, and ICE issuance without room IDs or client IP labels.
+
+Use one server process for now: room membership, manual pairing codes, Nearby records, and rate-limit buckets are held in that process's memory. Running multiple replicas behind a load balancer without shared room/signaling state will break pairing. The included container/Compose setup intentionally runs one application replica.
 
 ### Optional TURN relay
 
@@ -116,6 +131,10 @@ Direct WebRTC connections can fail behind restrictive NATs or firewalls. A TURN 
 | `PORT` | HTTP and WebSocket listening port | `3000` |
 | `TURN_URLS` | Comma-separated `turn:` or `turns:` URLs advertised to browsers | Empty |
 | `TURN_SECRET` | Shared TURN authentication secret used to issue temporary credentials | Empty |
+| `TRUST_PROXY` | Trust the first `X-Forwarded-For` address for rate limits/Nearby. Enable only behind a proxy that overwrites this header. | `false` |
+| `METRICS_TOKEN` | Enables `/metrics` and requires `Authorization: Bearer <token>` | Empty / metrics disabled |
+| `LOG_FORMAT` | `text` or `json` startup/shutdown logs without room IDs, codes, or IPs | `text` |
+| `LOG_LEVEL` | Set to `silent` to disable server logs | `info` |
 
 Set both TURN variables on the BlinkSend server. Configure the same shared secret on your TURN server; **never commit it to the repository**. BlinkSend returns credentials valid for one hour from `/ice`. A TURN relay carries file traffic and can create bandwidth costs. Without the two TURN variables, BlinkSend uses a public STUN server and direct connections only.
 
@@ -148,12 +167,13 @@ BlinkSend includes in-memory per-IP limits for room joins, WebSocket upgrades, Q
 npm ci
 npm test
 npm run bench
+npm run loadtest
 npm start
 ```
 
-`npm test` covers signaling abuse controls, SHA-256 vectors, browser-script syntax, PWA manifest invariants, UTF-8 text framing, path traversal rejection, corruption detection, a 10,000-file manifest, and a sparse chunk bitmap sized for a 5 GiB transfer without allocating 5 GiB of data. `npm run bench` prints repeatable timings for the 5 GiB-equivalent chunk map and 10,000-file manifest operations.
+`npm test` explicitly runs only `test/*.test.js` (so benchmark/load scripts can never be auto-discovered as tests) and covers signaling abuse controls, manual pairing and metrics, explicit trusted-proxy IP parsing, graceful restart notification/close behavior, SHA-256 vectors, browser-script syntax, PWA manifest invariants, UTF-8 text framing, path traversal rejection, corruption detection, a 10,000-file manifest, and a sparse chunk bitmap sized for a 5 GiB transfer without allocating 5 GiB of data. `npm run bench` prints repeatable timings for the 5 GiB-equivalent chunk map and 10,000-file manifest operations. `npm run loadtest` runs `scripts/load-benchmark.mjs`, boots the real signaling server, creates 10 simultaneous rooms / 20 WebSockets, forwards 500 validated signaling messages, resolves manual pairing codes, checks health, and shuts the server down.
 
-`public/` contains the browser interface and transfer logic. `server.js` serves static files, QR codes, temporary ICE credentials, and WebSocket signaling. `test/` covers the server's room behavior. The project uses no frontend build step.
+`public/` contains the browser interface and transfer logic. `server.js` serves static files, QR codes, manual pairing resolution, optional Nearby/metrics endpoints, temporary ICE credentials, WebSocket signaling, and graceful shutdown handling. `test/` covers the server's room behavior. The project uses no frontend build step.
 
 Contributions are welcome. For a bug report, include browser and operating system versions, whether the devices were on the same network, the connection status shown in BlinkSend, and steps to reproduce the problem. Do not post private invite links or TURN credentials.
 

@@ -16,7 +16,7 @@ Use GitHub's private vulnerability reporting for this repository when available.
 
 BlinkSend is designed for direct, ephemeral transfers between two browsers.
 
-- Room links are bearer secrets. Anyone who gets a valid link can attempt to join the room.
+- Room links are bearer secrets. Anyone who gets a valid link can attempt to join the room. Manual pairing codes are shorter convenience identifiers, are rate-limited and expire after 10 minutes; they are not a replacement for the six-digit DTLS fingerprint comparison.
 - A six-digit peer verification code is derived from the established WebRTC DTLS fingerprints. Users should compare the code on both devices before confirming.
 - File data is carried by WebRTC data channels and checked with SHA-256 at the application layer.
 - The signaling server forwards connection metadata but does not normally receive file contents.
@@ -28,4 +28,4 @@ BlinkSend is designed for direct, ephemeral transfers between two browsers.
 
 ## Public deployment
 
-The built-in controls are a baseline, not a complete internet-facing abuse platform. Public operators should additionally use a reverse proxy or edge service for distributed rate limiting, monitor TURN bandwidth, keep dependencies patched, terminate HTTPS correctly, and avoid logging room URLs or TURN credentials.
+The built-in controls are a baseline, not a complete internet-facing abuse platform. Public operators should additionally use a reverse proxy or edge service for distributed rate limiting, monitor TURN bandwidth, keep dependencies patched, terminate HTTPS correctly, and avoid logging room URLs or TURN credentials. `TRUST_PROXY` must only be enabled when BlinkSend is reachable exclusively through a trusted proxy that overwrites `X-Forwarded-For`; BlinkSend validates the forwarded value as an IP, but direct access to a proxy-trusting origin could still let clients spoof rate-limit/discovery identity. `/metrics` stays disabled unless `METRICS_TOKEN` is configured.
