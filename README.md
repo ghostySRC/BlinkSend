@@ -30,12 +30,13 @@ Use the language selector and theme button in the header. BlinkSend remembers bo
 
 ## Features
 
-- Computer ↔ computer and phone ↔ computer sharing through an invite link or QR code.
-- Send one file, several files, or choose an entire folder as a batch. Folder entries keep their relative path metadata while transferring.
+- Simple Send / Receive entry flow for computer ↔ computer and phone ↔ computer sharing through an invite link or QR code.
+- Send one file, several files, or choose an entire folder as a batch. On browsers with the File System Access API, BlinkSend recreates the folder tree automatically under one chosen destination.
 - Direct encrypted browser-to-browser transfer when the network allows it; optional TURN relay support for harder networks.
 - Peer verification code derived from the WebRTC DTLS fingerprints. Both devices must confirm the same six-digit code before sending is unlocked.
 - Incremental SHA-256 verification for every file. A transfer is only reported as verified after sender and receiver hashes match.
 - Transfer progress, average speed, cancellation, connection status, and clear errors when pairing fails.
+- Restart-safe resume on supported browsers: persistent file handles and IndexedDB session metadata allow an interrupted transfer to continue after a page reload. Receiver writes are checkpointed to disk so only the last uncommitted window may need to be resent.
 - Send an `http://` or `https://` link directly to the paired device without creating a file first.
 - Higher-throughput WebRTC sending with 64 KiB chunks and a larger buffered send window for fast local networks.
 - English and Swedish interface, plus light and dark modes. Your choices are saved on each device; the initial theme follows your system setting.
@@ -53,7 +54,7 @@ npm ci
 npm start
 ```
 
-Open **http://localhost:3000** in two browser tabs. Copy the invite link from the first tab into the second, choose one or more files, and accept them on the receiving side. Set `PORT=4000` to change the listening port.
+Open **http://localhost:3000** and choose **Send**. Open the generated invite link on the other device (or choose **Receive** and paste it), compare the verification code on both screens, then transfer files or a folder. Set `PORT=4000` to change the listening port.
 
 To use a phone, deploy the app to an **HTTPS** address that both devices can reach. The phone cannot access your computer's `localhost`, and many browser features require a secure origin. Keep both pages open until each transfer finishes.
 
@@ -75,7 +76,7 @@ sequenceDiagram
 
 The Node server serves the web interface and exchanges WebRTC connection details over `/signal`. File contents travel over the WebRTC data channel. When a TURN relay is configured and needed, the relay carries encrypted WebRTC traffic and consumes relay bandwidth. The server keeps room membership in memory, with a maximum of two sockets per room; inactive rooms expire after 30 minutes. A server restart disconnects active rooms.
 
-The recipient must accept each file. Batches are sent sequentially; declining one file moves to the next. Files are split into numbered chunks. If the network connection drops while both tabs remain open, BlinkSend keeps the partial transfer state, establishes a new verified peer connection, and continues from the receiver's next missing chunk. A full page reload still loses the in-memory resume state. Offline delivery is not supported, and only one file is active at a time.
+For normal files, the recipient accepts the transfer before data starts. Folder transfers can be accepted once as a batch; on supported browsers the receiver chooses one destination and BlinkSend recreates nested directories automatically. Files are split into numbered chunks. Network reconnects resume from the receiver's next missing chunk. When both sides use persistent File System Access handles, BlinkSend also stores the active session in IndexedDB so a page reload can resume the current transfer after the user grants access again. Browsers without persistent handles keep the in-page resume behavior only. Offline delivery is not supported, and only one file is active at a time.
 
 ## Browser and file limits
 
@@ -137,7 +138,7 @@ BlinkSend includes in-memory per-IP limits for room joins, WebSocket upgrades, Q
 | Room says “Room full” | Two connections are already present. Close an old tab or create a new room. |
 | Devices stay at “Connecting” | Refresh both pages. Try the same Wi-Fi; for restrictive networks, configure TURN. |
 | Incoming file cannot be accepted | The browser supports neither direct disk streaming nor OPFS and the file is over the 200 MB memory fallback limit. Try a newer browser. |
-| A transfer stops midway | Keep both tabs open and networks stable. The current version cannot resume a partial file. |
+| A transfer stops midway | BlinkSend should resume after reconnect. On supported desktop browsers it can also recover the current transfer after a reload; click **Resume transfer** and grant file access if prompted. |
 | Reverse proxy loads the page but pairing fails | Ensure `/signal` supports WebSocket upgrades and the page is served over HTTPS. |
 
 ## Development and contributions

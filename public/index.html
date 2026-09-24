@@ -8,32 +8,112 @@
   <title>BlinkSend — File transfer</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/style.css">
-  <script src="/sha256.js" defer></script>\n  <script src="/app.js" defer></script>
+  <script src="/sha256.js" defer></script>
+  <script src="/persistence.js" defer></script>
+  <script src="/app.js" defer></script>
 </head>
 <body>
   <main class="shell">
-    <header class="topbar"><div class="brand"><span class="mark" aria-hidden="true">↗</span> BlinkSend</div><div class="top-actions"><label class="visually-hidden" for="language" data-i18n="language">Language</label><select id="language" aria-label="Language"><option value="en">English</option><option value="sv">Svenska</option></select><button id="theme-toggle" type="button" class="header-button" aria-label="Switch to dark mode" title="Switch to dark mode">Dark</button><a class="top-link" href="https://github.com/ghostySRC/BlinkSend">GitHub</a></div></header>
+    <header class="topbar">
+      <div class="brand"><span class="mark" aria-hidden="true">↗</span> BlinkSend</div>
+      <div class="top-actions">
+        <label class="visually-hidden" for="language" data-i18n="language">Language</label>
+        <select id="language" aria-label="Language"><option value="en">English</option><option value="sv">Svenska</option></select>
+        <button id="theme-toggle" type="button" class="header-button" aria-label="Switch to dark mode" title="Switch to dark mode">Dark</button>
+        <a class="top-link" href="https://github.com/ghostySRC/BlinkSend">GitHub</a>
+      </div>
+    </header>
+
     <section class="workspace" aria-label="File transfer" data-i18n-aria="workspace">
-      <div class="intro"><h1 data-i18n="sendFiles">Send files</h1><p data-i18n="intro">Connect another device to send or receive files.</p></div>
-      <div class="columns">
-        <section class="card invite" aria-labelledby="invite-title">
+      <div class="intro">
+        <h1 data-i18n="headline">Move files directly.</h1>
+        <p data-i18n="intro">No account, no cloud storage. Pick a side and connect.</p>
+      </div>
+
+      <section id="mode-picker" class="mode-picker">
+        <button id="mode-send" class="mode-choice" type="button">
+          <span class="mode-icon" aria-hidden="true">↑</span>
+          <strong data-i18n="send">Send</strong>
+          <span data-i18n="sendHelp">Choose files or a folder, then share the QR code.</span>
+        </button>
+        <button id="mode-receive" class="mode-choice" type="button">
+          <span class="mode-icon" aria-hidden="true">↓</span>
+          <strong data-i18n="receive">Receive</strong>
+          <span data-i18n="receiveHelp">Open or paste the invite link from the sending device.</span>
+        </button>
+      </section>
+
+      <section id="receive-join" class="join-card" hidden>
+        <h2 data-i18n="receiveFiles">Receive files</h2>
+        <p data-i18n="pasteInviteHelp">Paste a BlinkSend invite link.</p>
+        <div class="join-row">
+          <input id="join-link" type="url" inputmode="url" autocomplete="off" data-i18n-placeholder="invitePlaceholder" placeholder="https://…/#room">
+          <button id="join-room" type="button" class="button primary" data-i18n="join">Join</button>
+        </div>
+        <button id="join-back" type="button" class="text-button" data-i18n="back">Back</button>
+      </section>
+
+      <section id="resume-card" class="resume-card" hidden>
+        <div>
+          <strong data-i18n="resumeAvailable">Unfinished transfer found</strong>
+          <p id="resume-detail"></p>
+        </div>
+        <div class="resume-actions">
+          <button id="resume-transfer" type="button" class="button primary" data-i18n="resumeTransfer">Resume transfer</button>
+          <button id="discard-resume" type="button" class="text-button" data-i18n="discard">Discard</button>
+        </div>
+      </section>
+
+      <div id="transfer-workspace" class="columns" hidden>
+        <section id="invite-card" class="card invite" aria-labelledby="invite-title">
           <div class="section-heading"><h2 id="invite-title" data-i18n="connectDevice">Connect a device</h2><p data-i18n="scan">Scan the code or open the invite link on your other device.</p></div>
           <div class="qr-wrap"><img id="qr" width="186" height="186" alt="QR code for this room" data-i18n-alt="qrAlt"></div>
           <div class="invite-actions"><button id="copy" type="button" class="button secondary" data-i18n="copy">Copy invite link</button><button id="new-room" type="button" class="text-button" data-i18n="newRoom">New room</button></div>
-          <p class="hint" data-i18n="private">Anyone with the link can join this room. Share it privately.</p>
+          <p class="hint" data-i18n="private">Anyone with the link can try to join. Verify the code on both devices.</p>
         </section>
-        <section class="card transfer" aria-labelledby="transfer-title">
-          <div class="section-heading"><h2 id="transfer-title" data-i18n="files">Files</h2><p data-i18n="direction">Send files in either direction once connected.</p></div>
-          <div class="connection"><span id="status-dot" class="status-dot" aria-hidden="true"></span><span id="status" role="status" data-i18n="connectingRoom">Connecting to room…</span></div><div id="verify-peer" class="verify-peer" hidden><span class="verify-label" data-i18n="verifyPeer">Verify device</span><strong id="verify-code" aria-live="polite">000 000</strong><p data-i18n="verifyHelp">Make sure both screens show the same code.</p><button id="verify-match" class="button primary" type="button" data-i18n="codesMatch">Codes match</button></div>
-          <label class="drop" id="drop"><input id="file" type="file" multiple disabled><span class="upload-icon" aria-hidden="true">↑</span><strong data-i18n="chooseFiles">Choose files</strong><span data-i18n="dropHere">or drop them here on a computer</span></label><input id="folder" class="visually-hidden" type="file" webkitdirectory directory multiple disabled><div class="transfer-actions"><button id="choose-folder" type="button" class="button secondary" disabled data-i18n="chooseFolder">Choose folder</button></div><div class="share-row"><input id="share-text" type="url" inputmode="url" autocomplete="off" placeholder="Paste a link" data-i18n-placeholder="linkPlaceholder" disabled><button id="send-text" type="button" class="button secondary" disabled data-i18n="sendLink">Send link</button></div>
-          <div id="transfer-info" class="transfer-info" hidden><div class="file-row"><span id="file-name"></span><span id="file-size"></span></div><progress id="progress" max="100" value="0" aria-label="Transfer progress" data-i18n-aria="transferProgress"></progress><div class="file-row muted"><span id="progress-text">Preparing…</span><button id="cancel" type="button" class="text-button" data-i18n="cancel">Cancel</button></div><p id="queue-status" class="queue-status" role="status" hidden></p></div>
+
+        <section id="transfer-card" class="card transfer" aria-labelledby="transfer-title">
+          <div class="section-heading"><h2 id="transfer-title" data-i18n="files">Files</h2><p id="direction-copy" data-i18n="direction">Choose what to send after the devices are verified.</p></div>
+          <div class="connection"><span id="status-dot" class="status-dot" aria-hidden="true"></span><span id="status" role="status" data-i18n="connectingRoom">Connecting to room…</span></div>
+          <div id="verify-peer" class="verify-peer" hidden>
+            <span class="verify-label" data-i18n="verifyPeer">Verify device</span>
+            <strong id="verify-code" aria-live="polite">000 000</strong>
+            <p data-i18n="verifyHelp">Make sure both screens show the same code.</p>
+            <button id="verify-match" class="button primary" type="button" data-i18n="codesMatch">Codes match</button>
+          </div>
+
+          <div id="send-controls">
+            <label class="drop" id="drop"><input id="file" type="file" multiple disabled><span class="upload-icon" aria-hidden="true">↑</span><strong data-i18n="chooseFiles">Choose files</strong><span data-i18n="dropHere">or drop them here on a computer</span></label>
+            <input id="folder" class="visually-hidden" type="file" webkitdirectory directory multiple disabled>
+            <div class="transfer-actions"><button id="choose-folder" type="button" class="button secondary" disabled data-i18n="chooseFolder">Choose folder</button></div>
+            <div class="share-row"><input id="share-text" type="url" inputmode="url" autocomplete="off" placeholder="Paste a link" data-i18n-placeholder="linkPlaceholder" disabled><button id="send-text" type="button" class="button secondary" disabled data-i18n="sendLink">Send link</button></div>
+          </div>
+
+          <div id="receive-wait" class="receive-wait" hidden><span class="receive-arrow" aria-hidden="true">↓</span><strong data-i18n="waitingForSender">Ready to receive</strong><p data-i18n="waitingForSenderHelp">Keep this page open. Incoming files will appear here.</p></div>
+
+          <div id="transfer-info" class="transfer-info" hidden>
+            <div class="file-row"><span id="file-name"></span><span id="file-size"></span></div>
+            <progress id="progress" max="100" value="0" aria-label="Transfer progress" data-i18n-aria="transferProgress"></progress>
+            <div class="file-row muted"><span id="progress-text">Preparing…</span><button id="cancel" type="button" class="text-button" data-i18n="cancel">Cancel</button></div>
+            <p id="queue-status" class="queue-status" role="status" hidden></p>
+          </div>
           <p class="hint" data-i18n="keepOpen">Keep both tabs open until the transfer finishes.</p>
         </section>
       </div>
-      <p id="notice" class="notice" role="status" aria-live="polite"></p><div id="received-text" class="received-text" hidden><span data-i18n="receivedLink">Received link</span><a id="received-link" target="_blank" rel="noopener noreferrer"></a><button id="copy-received" type="button" class="text-button" data-i18n="copyLink">Copy link</button></div>
+
+      <p id="notice" class="notice" role="status" aria-live="polite"></p>
+      <div id="received-text" class="received-text" hidden><span data-i18n="receivedLink">Received link</span><a id="received-link" target="_blank" rel="noopener noreferrer"></a><button id="copy-received" type="button" class="text-button" data-i18n="copyLink">Copy link</button></div>
     </section>
     <footer data-i18n="footer">BlinkSend · Two devices per room</footer>
   </main>
-  <div id="incoming" class="modal-backdrop" hidden><div class="modal" role="dialog" aria-modal="true" aria-labelledby="incoming-title"><h2 id="incoming-title" data-i18n="incomingFile">Incoming file</h2><p id="incoming-detail"></p><p id="save-note" class="hint"></p><div class="modal-actions"><button id="decline" type="button" class="button secondary" data-i18n="decline">Decline</button><button id="accept" type="button" class="button primary" data-i18n="saveFile">Save file</button></div></div></div>
+
+  <div id="incoming" class="modal-backdrop" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="incoming-title">
+      <h2 id="incoming-title">Incoming file</h2>
+      <p id="incoming-detail"></p>
+      <p id="save-note" class="hint"></p>
+      <div class="modal-actions"><button id="decline" type="button" class="button secondary" data-i18n="decline">Decline</button><button id="accept" type="button" class="button primary" data-i18n="saveFile">Save file</button></div>
+    </div>
+  </div>
 </body>
 </html>
