@@ -733,9 +733,10 @@
   async function waitForSendCapacity(limit){
     while(channel?.readyState==='open'&&channel.bufferedAmount>limit){
       await new Promise(resolve=>{
-        const done=()=>resolve();
+        let timer;
+        const done=()=>{clearTimeout(timer);channel?.removeEventListener?.('bufferedamountlow',done);resolve();};
         channel.addEventListener('bufferedamountlow',done,{once:true});
-        setTimeout(done,250);
+        timer=setTimeout(done,100);
       });
     }
     if(channel?.readyState!=='open')throw new Error('Connection closed');
@@ -906,7 +907,11 @@
       if(active.writer){
         const copied=payload.slice(),target=Math.max(size,tuning.writeBatch||1024*1024);
         const expected=active.writeBuffer?.length?(active.writeBufferStart+active.writeBufferBytes):offset;
-        if(active.writeBuffer?.length&&offset!==expected)await flushReceiveWrites(active);
+        if(active.writeBuffer?.length&&offset!==expected){
+          await flushReceiveWrites(active);
+          const afterFlush=BlinkTransfer.inspectChunk(active,seq,payload.byteLength);
+          if(!afterFlush.ok){stopTransfer('excess');return;}if(afterFlush.duplicate)return;
+        }
         if(!active.writeBuffer?.length){active.writeBuffer=[];active.writeBufferStart=offset;active.writeBufferBytes=0;}
         active.writeBuffer.push({seq,payload:copied});active.writeBufferBytes+=copied.byteLength;
         if(active.writeBufferBytes>=target)await flushReceiveWrites(active);
