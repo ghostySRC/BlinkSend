@@ -13,7 +13,7 @@
     if(throughputBps>50*MiB&&!weak&&rttMs<100)highWater=32*MiB;
     if(rttMs>180)highWater=Math.min(highWater,12*MiB);
     const readAhead=weak?2*MiB:throughputBps>20*MiB?8*MiB:4*MiB;
-    const writeBatch=weak?512*KiB:throughputBps>10*MiB?2*MiB:MiB;
+    const writeBatch=weak?MiB:throughputBps>10*MiB?4*MiB:2*MiB;
     return {
       chunkSize,highWater,lowWater:Math.max(MiB,Math.floor(highWater/4)),
       readAhead,writeBatch,checkpointBytes:64*MiB,uiIntervalMs:100
