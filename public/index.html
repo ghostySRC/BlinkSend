@@ -12,28 +12,28 @@
 </head>
 <body>
   <main class="shell">
-    <header class="topbar"><div class="brand"><span class="mark" aria-hidden="true">↗</span> BlinkSend</div><a class="top-link" href="https://github.com/ghostySRC/BlinkSend">GitHub</a></header>
-    <section class="workspace" aria-label="File transfer">
-      <div class="intro"><h1>Send files</h1><p>Connect another device to send or receive files.</p></div>
+    <header class="topbar"><div class="brand"><span class="mark" aria-hidden="true">↗</span> BlinkSend</div><div class="top-actions"><label class="visually-hidden" for="language" data-i18n="language">Language</label><select id="language" aria-label="Language"><option value="en">English</option><option value="sv">Svenska</option></select><button id="theme-toggle" type="button" class="header-button" aria-label="Switch to dark mode" title="Switch to dark mode">Dark</button><a class="top-link" href="https://github.com/ghostySRC/BlinkSend">GitHub</a></div></header>
+    <section class="workspace" aria-label="File transfer" data-i18n-aria="workspace">
+      <div class="intro"><h1 data-i18n="sendFiles">Send files</h1><p data-i18n="intro">Connect another device to send or receive files.</p></div>
       <div class="columns">
         <section class="card invite" aria-labelledby="invite-title">
-          <div class="section-heading"><h2 id="invite-title">Connect a device</h2><p>Scan the code or open the invite link on your other device.</p></div>
-          <div class="qr-wrap"><img id="qr" width="186" height="186" alt="QR code for this room"></div>
-          <div class="invite-actions"><button id="copy" type="button" class="button secondary">Copy invite link</button><button id="new-room" type="button" class="text-button">New room</button></div>
-          <p class="hint">Anyone with the link can join this room. Share it privately.</p>
+          <div class="section-heading"><h2 id="invite-title" data-i18n="connectDevice">Connect a device</h2><p data-i18n="scan">Scan the code or open the invite link on your other device.</p></div>
+          <div class="qr-wrap"><img id="qr" width="186" height="186" alt="QR code for this room" data-i18n-alt="qrAlt"></div>
+          <div class="invite-actions"><button id="copy" type="button" class="button secondary" data-i18n="copy">Copy invite link</button><button id="new-room" type="button" class="text-button" data-i18n="newRoom">New room</button></div>
+          <p class="hint" data-i18n="private">Anyone with the link can join this room. Share it privately.</p>
         </section>
         <section class="card transfer" aria-labelledby="transfer-title">
-          <div class="section-heading"><h2 id="transfer-title">Files</h2><p>Send files in either direction once connected.</p></div>
-          <div class="connection"><span id="status-dot" class="status-dot" aria-hidden="true"></span><span id="status" role="status">Connecting to room…</span></div>
-          <label class="drop" id="drop"><input id="file" type="file" multiple disabled><span class="upload-icon" aria-hidden="true">↑</span><strong>Choose files</strong><span>or drop them here on a computer</span></label>
-          <div id="transfer-info" class="transfer-info" hidden><div class="file-row"><span id="file-name"></span><span id="file-size"></span></div><progress id="progress" max="100" value="0" aria-label="Transfer progress"></progress><div class="file-row muted"><span id="progress-text">Preparing…</span><button id="cancel" type="button" class="text-button">Cancel</button></div><p id="queue-status" class="queue-status" role="status" hidden></p></div>
-          <p class="hint">Keep both tabs open until the transfer finishes.</p>
+          <div class="section-heading"><h2 id="transfer-title" data-i18n="files">Files</h2><p data-i18n="direction">Send files in either direction once connected.</p></div>
+          <div class="connection"><span id="status-dot" class="status-dot" aria-hidden="true"></span><span id="status" role="status" data-i18n="connectingRoom">Connecting to room…</span></div>
+          <label class="drop" id="drop"><input id="file" type="file" multiple disabled><span class="upload-icon" aria-hidden="true">↑</span><strong data-i18n="chooseFiles">Choose files</strong><span data-i18n="dropHere">or drop them here on a computer</span></label>
+          <div id="transfer-info" class="transfer-info" hidden><div class="file-row"><span id="file-name"></span><span id="file-size"></span></div><progress id="progress" max="100" value="0" aria-label="Transfer progress" data-i18n-aria="transferProgress"></progress><div class="file-row muted"><span id="progress-text">Preparing…</span><button id="cancel" type="button" class="text-button" data-i18n="cancel">Cancel</button></div><p id="queue-status" class="queue-status" role="status" hidden></p></div>
+          <p class="hint" data-i18n="keepOpen">Keep both tabs open until the transfer finishes.</p>
         </section>
       </div>
       <p id="notice" class="notice" role="status" aria-live="polite"></p>
     </section>
-    <footer>BlinkSend · Two devices per room</footer>
+    <footer data-i18n="footer">BlinkSend · Two devices per room</footer>
   </main>
-  <div id="incoming" class="modal-backdrop" hidden><div class="modal" role="dialog" aria-modal="true" aria-labelledby="incoming-title"><h2 id="incoming-title">Incoming file</h2><p id="incoming-detail"></p><p id="save-note" class="hint"></p><div class="modal-actions"><button id="decline" type="button" class="button secondary">Decline</button><button id="accept" type="button" class="button primary">Save file</button></div></div></div>
+  <div id="incoming" class="modal-backdrop" hidden><div class="modal" role="dialog" aria-modal="true" aria-labelledby="incoming-title"><h2 id="incoming-title" data-i18n="incomingFile">Incoming file</h2><p id="incoming-detail"></p><p id="save-note" class="hint"></p><div class="modal-actions"><button id="decline" type="button" class="button secondary" data-i18n="decline">Decline</button><button id="accept" type="button" class="button primary" data-i18n="saveFile">Save file</button></div></div></div>
 </body>
 </html>

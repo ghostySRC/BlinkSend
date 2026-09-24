@@ -1,30 +1,217 @@
 (() => {
   const $ = id => document.getElementById(id);
   const els = Object.fromEntries(['qr','copy','new-room','status','status-dot','file','drop','transfer-info','file-name','file-size','progress','progress-text','cancel','queue-status','notice','incoming','incoming-detail','save-note','accept','decline'].map(id => [id, $(id)]));
+  const translations = {
+  "en": {
+    "language": "Language",
+    "workspace": "File transfer",
+    "sendFiles": "Send files",
+    "intro": "Connect another device to send or receive files.",
+    "connectDevice": "Connect a device",
+    "scan": "Scan the code or open the invite link on your other device.",
+    "qrAlt": "QR code for this room",
+    "copy": "Copy invite link",
+    "copied": "Link copied",
+    "newRoom": "New room",
+    "private": "Anyone with the link can join this room. Share it privately.",
+    "files": "Files",
+    "direction": "Send files in either direction once connected.",
+    "chooseFiles": "Choose files",
+    "dropHere": "or drop them here on a computer",
+    "transferProgress": "Transfer progress",
+    "cancel": "Cancel",
+    "cancelBatch": "Cancel batch",
+    "keepOpen": "Keep both tabs open until the transfer finishes.",
+    "footer": "BlinkSend · Two devices per room",
+    "incomingFile": "Incoming file",
+    "decline": "Decline",
+    "saveFile": "Save file",
+    "ready": "Connected — ready to send",
+    "readyRelay": "Connected via relay — ready to send",
+    "readyDirect": "Connected directly — ready to send",
+    "connectingRoom": "Connecting to room…",
+    "waiting": "Waiting for another device…",
+    "connectFailed": "Could not connect devices",
+    "turnHelp": "Check that both tabs are open, then refresh them. Some networks require a TURN relay.",
+    "interrupted": "Connection interrupted. Try refreshing both devices.",
+    "peerLeft": "Other device disconnected",
+    "transferFailed": "Transfer failed. Please try again.",
+    "roomFull": "Room full",
+    "roomFullHelp": "Only two devices can join a room. Create a new room to start over.",
+    "connecting": "Connecting devices…",
+    "directFailed": "Could not establish a direct connection. Refresh both devices and try again.",
+    "expired": "Room expired — reconnecting…",
+    "reconnecting": "Reconnecting to room…",
+    "starting": "Starting…",
+    "queue": "File %current% of %total% · %remaining% remaining",
+    "sending": "Sending",
+    "receiving": "Receiving",
+    "speed": "%label% %bytes% of %total% · %speed%/s",
+    "connectionLost": "Connection lost. Transfer stopped.",
+    "waitingAcceptance": "Waiting for acceptance…",
+    "finishing": "Finishing on other device…",
+    "declined": "Other device declined the file.",
+    "peerCancelled": "Transfer cancelled by other device.",
+    "incomplete": "Transfer incomplete. Please try again.",
+    "received": "File received successfully.",
+    "saveFailed": "Could not save file. Please try again.",
+    "sentBatch": "File %current% of %total% sent successfully.",
+    "sent": "File sent successfully.",
+    "excess": "Received more data than expected. Transfer stopped.",
+    "writeFailed": "Could not write file. Please try again.",
+    "largeUnsupported": "This browser cannot stream large downloads to disk. Use a desktop Chrome browser to receive this file.",
+    "saveNote": "Choose where to save it if your browser supports that option.",
+    "incomingPrompt": "Incoming file — choose whether to accept",
+    "saveLocationFailed": "Could not open a location to save the file.",
+    "cancelled": "Transfer cancelled.",
+    "copyFailed": "Could not copy the link. Copy it from your browser address bar.",
+    "finishFirst": "Finish or cancel the current transfer first.",
+    "switchDark": "Switch to dark mode",
+    "switchLight": "Switch to light mode",
+    "dark": "Dark",
+    "light": "Light"
+  },
+  "sv": {
+    "language": "Språk",
+    "workspace": "Filöverföring",
+    "sendFiles": "Skicka filer",
+    "intro": "Anslut en annan enhet för att skicka eller ta emot filer.",
+    "connectDevice": "Anslut en enhet",
+    "scan": "Skanna koden eller öppna inbjudningslänken på din andra enhet.",
+    "qrAlt": "QR-kod för det här rummet",
+    "copy": "Kopiera inbjudningslänk",
+    "copied": "Länken kopierad",
+    "newRoom": "Nytt rum",
+    "private": "Alla med länken kan ansluta till rummet. Dela den privat.",
+    "files": "Filer",
+    "direction": "Skicka filer åt båda hållen när enheterna är anslutna.",
+    "chooseFiles": "Välj filer",
+    "dropHere": "eller dra dem hit på en dator",
+    "transferProgress": "Överföringsförlopp",
+    "cancel": "Avbryt",
+    "cancelBatch": "Avbryt alla",
+    "keepOpen": "Håll båda flikarna öppna tills överföringen är klar.",
+    "footer": "BlinkSend · Två enheter per rum",
+    "incomingFile": "Inkommande fil",
+    "decline": "Neka",
+    "saveFile": "Spara fil",
+    "ready": "Ansluten — redo att skicka",
+    "readyRelay": "Ansluten via relä — redo att skicka",
+    "readyDirect": "Direktansluten — redo att skicka",
+    "connectingRoom": "Ansluter till rummet…",
+    "waiting": "Väntar på en annan enhet…",
+    "connectFailed": "Kunde inte ansluta enheterna",
+    "turnHelp": "Kontrollera att båda flikarna är öppna och uppdatera dem. Vissa nätverk kräver ett TURN-relä.",
+    "interrupted": "Anslutningen bröts. Försök uppdatera båda enheterna.",
+    "peerLeft": "Den andra enheten kopplades från",
+    "transferFailed": "Överföringen misslyckades. Försök igen.",
+    "roomFull": "Rummet är fullt",
+    "roomFullHelp": "Bara två enheter kan ansluta till ett rum. Skapa ett nytt rum för att börja om.",
+    "connecting": "Ansluter enheterna…",
+    "directFailed": "Kunde inte upprätta anslutningen. Uppdatera båda enheterna och försök igen.",
+    "expired": "Rummet har löpt ut — ansluter igen…",
+    "reconnecting": "Återansluter till rummet…",
+    "starting": "Startar…",
+    "queue": "Fil %current% av %total% · %remaining% återstår",
+    "sending": "Skickar",
+    "receiving": "Tar emot",
+    "speed": "%label% %bytes% av %total% · %speed%/s",
+    "connectionLost": "Anslutningen bröts. Överföringen stoppades.",
+    "waitingAcceptance": "Väntar på godkännande…",
+    "finishing": "Slutför på den andra enheten…",
+    "declined": "Den andra enheten nekade filen.",
+    "peerCancelled": "Överföringen avbröts av den andra enheten.",
+    "incomplete": "Överföringen är ofullständig. Försök igen.",
+    "received": "Filen har tagits emot.",
+    "saveFailed": "Kunde inte spara filen. Försök igen.",
+    "sentBatch": "Fil %current% av %total% har skickats.",
+    "sent": "Filen har skickats.",
+    "excess": "Mer data än väntat togs emot. Överföringen stoppades.",
+    "writeFailed": "Kunde inte skriva filen. Försök igen.",
+    "largeUnsupported": "Den här webbläsaren kan inte strömma stora nedladdningar till disken. Använd Chrome på en dator för att ta emot filen.",
+    "saveNote": "Välj var filen ska sparas om din webbläsare stöder det.",
+    "incomingPrompt": "Inkommande fil — välj om du vill ta emot den",
+    "saveLocationFailed": "Kunde inte öppna en plats för att spara filen.",
+    "cancelled": "Överföringen avbröts.",
+    "copyFailed": "Kunde inte kopiera länken. Kopiera den från webbläsarens adressfält.",
+    "finishFirst": "Slutför eller avbryt den pågående överföringen först.",
+    "switchDark": "Växla till mörkt läge",
+    "switchLight": "Växla till ljust läge",
+    "dark": "Mörkt",
+    "light": "Ljust"
+  }
+};
+  const readSetting = key => { try { return localStorage.getItem(key); } catch { return null; } };
+  const saveSetting = (key, value) => { try { localStorage.setItem(key, value); } catch { /* Private browsing may disable storage. */ } };
+  let language = readSetting('blinksend-language') || (navigator.language?.toLowerCase().startsWith('sv') ? 'sv' : 'en');
+  if (!translations[language]) language = 'en';
+  const systemTheme = matchMedia('(prefers-color-scheme: dark)');
+  let theme = readSetting('blinksend-theme') || (systemTheme.matches ? 'dark' : 'light');
+  if (!['dark', 'light'].includes(theme)) theme = 'light';
+  const tr = (key, vars = {}) => (translations[language][key] || translations.en[key] || key).replace(/%([a-z]+)%/g, (_, name) => String(vars[name] ?? ''));
+  let lastStatus = { key: 'connectingRoom', ready: false, vars: {} }, lastNotice = { key: '', vars: {} }, progressState, copyTimer;
+  function applyTheme() {
+    document.documentElement.dataset.theme = theme;
+    document.querySelector('meta[name="theme-color"]').content = theme === 'dark' ? '#171d20' : '#f6f7f8';
+    const toggle = $('theme-toggle');
+    toggle.textContent = tr(theme === 'dark' ? 'light' : 'dark');
+    toggle.title = toggle.ariaLabel = tr(theme === 'dark' ? 'switchLight' : 'switchDark');
+  }
+  function applyLanguage() {
+    document.documentElement.lang = language;
+    document.title = language === 'sv' ? 'BlinkSend — Filöverföring' : 'BlinkSend — File transfer';
+    $('language').value = language;
+    $('language').ariaLabel = tr('language');
+    document.querySelectorAll('[data-i18n]').forEach(el => { el.textContent = tr(el.dataset.i18n); });
+    document.querySelectorAll('[data-i18n-alt]').forEach(el => { el.alt = tr(el.dataset.i18nAlt); });
+    document.querySelectorAll('[data-i18n-aria]').forEach(el => { el.ariaLabel = tr(el.dataset.i18nAria); });
+    els.status.textContent = tr(lastStatus.key, lastStatus.vars);
+    els.notice.textContent = lastNotice.key ? tr(lastNotice.key, lastNotice.vars) : '';
+    if (pending) updateSaveNote();
+    if (active) renderTransfer();
+    if (els.copy.dataset.copied) els.copy.textContent = tr('copied');
+    applyTheme();
+  }
+  $('language').onchange = e => { language = e.target.value; saveSetting('blinksend-language', language); applyLanguage(); };
+  $('theme-toggle').onclick = () => { theme = theme === 'dark' ? 'light' : 'dark'; saveSetting('blinksend-theme', theme); applyTheme(); };
+  systemTheme.addEventListener?.('change', e => { if (!readSetting('blinksend-theme')) { theme = e.matches ? 'dark' : 'light'; applyTheme(); } });
+  function updateSaveNote() {
+    els['save-note'].textContent = tr(!window.showSaveFilePicker && pending.size > maxMemoryFile ? 'largeUnsupported' : 'saveNote');
+  }
+  function renderTransfer() {
+    els['queue-status'].textContent = tr('queue', { current: batchDone + 1, total: batchTotal, remaining: outgoing.length });
+    els.cancel.textContent = tr(batchTotal > 1 && active?.direction === 'send' ? 'cancelBatch' : 'cancel');
+    if (progressState) {
+      const { bytes, total, started, label } = progressState;
+      const speed = bytes / Math.max(1, (Date.now() - started) / 1000);
+      els['progress-text'].textContent = tr('speed', { label: tr(label), bytes: format(bytes), total: format(total), speed: format(speed) });
+    } else els['progress-text'].textContent = tr(active?.stage || 'starting');
+  }
   const chunkSize = 32 * 1024;
   const maxMemoryFile = 200 * 1024 * 1024;
   const format = bytes => bytes < 1024 ? `${bytes} B` : bytes < 1048576 ? `${(bytes / 1024).toFixed(1)} KB` : bytes < 1073741824 ? `${(bytes / 1048576).toFixed(1)} MB` : `${(bytes / 1073741824).toFixed(2)} GB`;
   let socket, pc, channel, pending, active, incomingQueue = Promise.resolve(), signalQueue = Promise.resolve(), connectTimer;
-  let readyLabel = 'Connected — ready to send';
+  let readyLabel = 'ready';
   let outgoing = [], batchTotal = 0, batchDone = 0;
   let room = location.hash.slice(1).toLowerCase();
   if (!/^[a-f0-9]{32}$/.test(room)) { room = [...crypto.getRandomValues(new Uint8Array(16))].map(v => v.toString(16).padStart(2,'0')).join(''); history.replaceState(null, '', `${location.pathname}${location.search}#${room}`); }
   const roomLink = () => `${location.origin}${location.pathname}#${room}`;
   els.qr.src = `/qr?url=${encodeURIComponent(roomLink())}`;
-  function status(message, ready = false) {
-    els.status.textContent = message;
+  function status(key, ready = false, vars = {}) {
+    lastStatus = { key, ready, vars };
+    els.status.textContent = tr(key, vars);
     els['status-dot'].classList.toggle('ready', ready);
     els.file.disabled = !ready || !!active || !!pending;
     els.drop.classList.toggle('disabled', els.file.disabled);
   }
-  function notice(message = '') { els.notice.textContent = message; }
+  function notice(key = '', vars = {}) { lastNotice = { key, vars }; els.notice.textContent = key ? tr(key, vars) : ''; }
   function signal(type, payload) { if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type, payload })); }
   function resetPeer() {
     clearTimeout(connectTimer);
-    if (active) stopTransfer('Connection lost. Transfer stopped.', false);
+    if (active) stopTransfer('connectionLost', false);
     pending = null; els.incoming.hidden = true;
     channel?.close(); pc?.close(); channel = null; pc = null;
-    status('Waiting for another device…');
+    status('waiting');
   }
   async function connectionPath() {
     const current = pc;
@@ -38,7 +225,7 @@
       }
       const local = stats.get(pair?.localCandidateId), remote = stats.get(pair?.remoteCandidateId);
       const relayed = local?.candidateType === 'relay' || remote?.candidateType === 'relay';
-      readyLabel = !pair ? 'Connected — ready to send' : relayed ? 'Connected via relay — ready to send' : 'Connected directly — ready to send';
+      readyLabel = !pair ? 'ready' : relayed ? 'readyRelay' : 'readyDirect';
       status(readyLabel, true);
     } catch { if (pc === current && channel?.readyState === 'open') status(readyLabel, true); }
   }
@@ -51,14 +238,14 @@
     const current = pc;
     connectTimer = setTimeout(() => {
       if (pc === current && channel?.readyState !== 'open') {
-        status('Could not connect devices');
-        notice('Check that both tabs are open, then refresh them. Some networks require a TURN relay.');
+        status('connectFailed');
+        notice('turnHelp');
       }
     }, 20_000);
     pc.onicecandidate = e => { if (e.candidate) signal('candidate', e.candidate.toJSON()); };
     pc.onconnectionstatechange = () => {
       if (pc.connectionState === 'connected' && channel?.readyState === 'open') connectionPath();
-      if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') { if (active) stopTransfer('Connection lost. Transfer stopped.', false); status('Connection interrupted. Try refreshing both devices.'); }
+      if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') { if (active) stopTransfer('connectionLost', false); status('interrupted'); }
     };
     pc.ondatachannel = e => setupChannel(e.channel);
   }
@@ -67,10 +254,10 @@
     ch.binaryType = 'arraybuffer';
     ch.bufferedAmountLowThreshold = 512 * 1024;
     ch.onopen = () => { clearTimeout(connectTimer); connectionPath(); notice(); };
-    ch.onclose = () => { if (active) stopTransfer('Connection lost. Transfer stopped.', false); status('Other device disconnected'); };
+    ch.onclose = () => { if (active) stopTransfer('connectionLost', false); status('peerLeft'); };
     ch.onmessage = e => {
       incomingQueue = incomingQueue.then(() => typeof e.data === 'string' ? control(e.data) : receiveChunk(e.data)).catch(() => {
-        if (active) stopTransfer('Transfer failed. Please try again.');
+        if (active) stopTransfer('transferFailed');
       });
     };
   }
@@ -80,49 +267,48 @@
     socket.onmessage = e => { signalQueue = signalQueue.then(async () => {
       let msg; try { msg = JSON.parse(e.data); } catch { return; }
       try {
-        if (msg.type === 'joined') status(msg.count === 1 ? 'Waiting for another device…' : 'Connecting devices…');
-        if (msg.type === 'full') { status('Room full'); notice('Only two devices can join a room. Create a new room to start over.'); }
+        if (msg.type === 'joined') status(msg.count === 1 ? 'waiting' : 'connecting');
+        if (msg.type === 'full') { status('roomFull'); notice('roomFullHelp'); }
         if (msg.type === 'peer-left') resetPeer();
-        if (msg.type === 'peer-joined') { await makePeer(); setupChannel(pc.createDataChannel('files', { ordered: true })); await pc.setLocalDescription(await pc.createOffer()); signal('offer', pc.localDescription.toJSON()); status('Connecting devices…'); }
-        if (msg.type === 'offer') { await makePeer(); await pc.setRemoteDescription(msg.payload); await pc.setLocalDescription(await pc.createAnswer()); signal('answer', pc.localDescription.toJSON()); status('Connecting devices…'); }
+        if (msg.type === 'peer-joined') { await makePeer(); setupChannel(pc.createDataChannel('files', { ordered: true })); await pc.setLocalDescription(await pc.createOffer()); signal('offer', pc.localDescription.toJSON()); status('connecting'); }
+        if (msg.type === 'offer') { await makePeer(); await pc.setRemoteDescription(msg.payload); await pc.setLocalDescription(await pc.createAnswer()); signal('answer', pc.localDescription.toJSON()); status('connecting'); }
         if (msg.type === 'answer' && pc) await pc.setRemoteDescription(msg.payload);
         if (msg.type === 'candidate' && pc) await pc.addIceCandidate(msg.payload);
-      } catch { notice('Could not establish a direct connection. Refresh both devices and try again.'); }
-    }).catch(() => notice('Could not establish a direct connection. Refresh both devices and try again.')); };
+      } catch { notice('directFailed'); }
+    }).catch(() => notice('directFailed')); };
     socket.onclose = e => {
       if (e.code === 1008) return;
       resetPeer(); setTimeout(connect, 2000);
-      status(e.code === 1001 ? 'Room expired — reconnecting…' : 'Reconnecting to room…');
+      status(e.code === 1001 ? 'expired' : 'reconnecting');
     };
   }
   function showTransfer(name, size) {
     els['transfer-info'].hidden = false; els['file-name'].textContent = name; els['file-size'].textContent = format(size);
-    els.progress.value = 0; els['progress-text'].textContent = 'Starting…';
+    els.progress.value = 0; active.stage = 'starting'; progressState = null;
     els.file.disabled = true; els.drop.classList.add('disabled');
     els['queue-status'].hidden = batchTotal < 2 || active?.direction !== 'send';
-    els['queue-status'].textContent = `File ${batchDone + 1} of ${batchTotal} · ${outgoing.length} remaining`;
-    els.cancel.textContent = batchTotal > 1 && active?.direction === 'send' ? 'Cancel batch' : 'Cancel';
+    renderTransfer();
   }
   function progress(bytes, total, started, label) {
     els.progress.value = total ? Math.min(100, bytes / total * 100) : 100;
-    const speed = (bytes / Math.max(1, (Date.now() - started) / 1000));
-    els['progress-text'].textContent = `${label} ${format(bytes)} of ${format(total)} · ${format(speed)}/s`;
+    progressState = { bytes, total, started, label };
+    renderTransfer();
   }
-  function stopTransfer(message, notify = true, preserveQueue = false) {
+  function stopTransfer(message, notify = true, preserveQueue = false, vars = {}) {
     if (notify && active && channel?.readyState === 'open') channel.send(JSON.stringify({ type: 'cancel', id: active.id }));
     if (active?.writer) active.writer.abort().catch(() => {});
-    active = null;
+    active = null; progressState = null;
     if (!preserveQueue) { outgoing = []; batchTotal = 0; batchDone = 0; }
     els['transfer-info'].hidden = true; els.file.value = '';
-    status(channel?.readyState === 'open' ? readyLabel : 'Waiting for another device…', channel?.readyState === 'open');
-    notice(message);
+    status(channel?.readyState === 'open' ? readyLabel : 'waiting', channel?.readyState === 'open');
+    notice(message, vars);
   }
   async function sendFile(file) {
     if (!file || channel?.readyState !== 'open' || active || pending) return;
     const id = crypto.randomUUID(); active = { id, direction: 'send', file, sent: 0, started: Date.now(), accepted: false };
     showTransfer(file.name, file.size);
     channel.send(JSON.stringify({ type: 'request', id, name: file.name, size: file.size }));
-    els['progress-text'].textContent = 'Waiting for acceptance…';
+    active.stage = 'waitingAcceptance'; renderTransfer();
   }
   function sendNext() {
     if (active || pending || channel?.readyState !== 'open') return;
@@ -130,8 +316,8 @@
     if (file) { notice(); sendFile(file); }
     else { batchTotal = 0; batchDone = 0; }
   }
-  function finishOutgoing(message) {
-    stopTransfer(message, false, true);
+  function finishOutgoing(message, vars = {}) {
+    stopTransfer(message, false, true, vars);
     batchDone++;
     if (outgoing.length) setTimeout(sendNext, 0);
     else { batchTotal = 0; batchDone = 0; }
@@ -151,10 +337,10 @@
         const part = await file.slice(active.sent, active.sent + chunkSize).arrayBuffer();
         if (active?.id !== id) return;
         channel.send(part); active.sent += part.byteLength;
-        progress(active.sent, file.size, active.started, 'Sending');
+        progress(active.sent, file.size, active.started, 'sending');
       }
-      if (active?.id === id) { channel.send(JSON.stringify({ type: 'complete', id })); els['progress-text'].textContent = 'Finishing on other device…'; }
-    } catch { if (active?.id === id) stopTransfer('Transfer failed. Please try again.'); }
+      if (active?.id === id) { channel.send(JSON.stringify({ type: 'complete', id })); active.stage = 'finishing'; progressState = null; renderTransfer(); }
+    } catch { if (active?.id === id) stopTransfer('transferFailed'); }
   }
   async function control(raw) {
     let msg; try { msg = JSON.parse(raw); } catch { return; }
@@ -162,33 +348,33 @@
       if (active || pending || typeof msg.name !== 'string' || msg.name.length > 255 || !Number.isSafeInteger(msg.size) || msg.size < 0 || typeof msg.id !== 'string') { channel.send(JSON.stringify({ type: 'decline', id: msg.id })); return; }
       pending = { id: msg.id, name: msg.name.replace(/[\\/\x00-\x1f\x7f]/g, '_').trim() || 'download', size: msg.size };
       els['incoming-detail'].textContent = `${pending.name} · ${format(msg.size)}`;
-      els['save-note'].textContent = !window.showSaveFilePicker && msg.size > maxMemoryFile ? 'This browser cannot stream large downloads to disk. Use a desktop Chrome browser to receive this file.' : 'Choose where to save it if your browser supports that option.';
+      updateSaveNote();
       els.accept.disabled = !window.showSaveFilePicker && msg.size > maxMemoryFile;
       els.incoming.hidden = false; els.accept.focus();
-      status('Incoming file — choose whether to accept');
+      status('incomingPrompt');
     }
     if (msg.type === 'accept' && active?.id === msg.id && active.direction === 'send') { active.accepted = true; pump(msg.id); }
-    if (msg.type === 'decline' && active?.id === msg.id && active.direction === 'send') finishOutgoing('Other device declined the file.');
-    if (msg.type === 'cancel') { if (pending?.id === msg.id) { pending = null; els.incoming.hidden = true; status(readyLabel, true); } if (active?.id === msg.id) { if (active.direction === 'send') finishOutgoing('Transfer cancelled by other device.'); else stopTransfer('Transfer cancelled by other device.', false); } }
+    if (msg.type === 'decline' && active?.id === msg.id && active.direction === 'send') finishOutgoing('declined');
+    if (msg.type === 'cancel') { if (pending?.id === msg.id) { pending = null; els.incoming.hidden = true; status(readyLabel, true); } if (active?.id === msg.id) { if (active.direction === 'send') finishOutgoing('peerCancelled'); else stopTransfer('peerCancelled', false); } }
     if (msg.type === 'complete' && active?.id === msg.id && active.direction === 'receive') {
-      if (active.received !== active.size) { stopTransfer('Transfer incomplete. Please try again.'); return; }
+      if (active.received !== active.size) { stopTransfer('incomplete'); return; }
       try {
         if (active.writer) await active.writer.close();
         else { const url = URL.createObjectURL(new Blob(active.chunks)); const anchor = document.createElement('a'); anchor.href = url; anchor.download = active.name; document.body.append(anchor); anchor.click(); anchor.remove(); setTimeout(() => URL.revokeObjectURL(url), 60_000); }
         channel.send(JSON.stringify({ type: 'saved', id: msg.id }));
-        stopTransfer('File received successfully.', false);
-      } catch { stopTransfer('Could not save file. Please try again.'); }
+        stopTransfer('received', false);
+      } catch { stopTransfer('saveFailed'); }
     }
-    if (msg.type === 'saved' && active?.id === msg.id && active.direction === 'send') finishOutgoing(batchTotal > 1 ? `File ${batchDone + 1} of ${batchTotal} sent successfully.` : 'File sent successfully.');
+    if (msg.type === 'saved' && active?.id === msg.id && active.direction === 'send') finishOutgoing(batchTotal > 1 ? 'sentBatch' : 'sent', { current: batchDone + 1, total: batchTotal });
   }
   async function receiveChunk(data) {
     if (!active || active.direction !== 'receive') return;
-    if (active.received + data.byteLength > active.size) { stopTransfer('Received more data than expected. Transfer stopped.'); return; }
+    if (active.received + data.byteLength > active.size) { stopTransfer('excess'); return; }
     try {
       if (active.writer) await active.writer.write(data); else active.chunks.push(data);
       active.received += data.byteLength;
-      progress(active.received, active.size, active.started, 'Receiving');
-    } catch { stopTransfer('Could not write file. Please try again.'); }
+      progress(active.received, active.size, active.started, 'receiving');
+    } catch { stopTransfer('writeFailed'); }
   }
   els.accept.onclick = async () => {
     if (!pending || active) return;
@@ -196,7 +382,7 @@
     let writer;
     if (window.showSaveFilePicker) {
       try { const handle = await showSaveFilePicker({ suggestedName: request.name }); writer = await handle.createWritable(); }
-      catch (error) { if (error.name === 'AbortError') return; notice('Could not open a location to save the file.'); return; }
+      catch (error) { if (error.name === 'AbortError') return; notice('saveLocationFailed'); return; }
     }
     if (pending?.id !== request.id) { writer?.abort(); return; }
     pending = null; els.incoming.hidden = true;
@@ -205,13 +391,14 @@
     channel.send(JSON.stringify({ type: 'accept', id: request.id }));
   };
   els.decline.onclick = () => { if (pending) channel.send(JSON.stringify({ type: 'decline', id: pending.id })); pending = null; els.incoming.hidden = true; status(readyLabel, true); };
-  els.cancel.onclick = () => stopTransfer('Transfer cancelled.');
+  els.cancel.onclick = () => stopTransfer('cancelled');
   els.file.onchange = () => enqueueFiles(els.file.files);
   els.drop.ondragover = e => { e.preventDefault(); if (!els.file.disabled) els.drop.classList.add('drag'); };
   els.drop.ondragleave = () => els.drop.classList.remove('drag');
   els.drop.ondrop = e => { e.preventDefault(); els.drop.classList.remove('drag'); if (!els.file.disabled) enqueueFiles(e.dataTransfer.files); };
-  els.copy.onclick = async () => { try { await navigator.clipboard.writeText(roomLink()); els.copy.textContent = 'Link copied'; setTimeout(() => els.copy.textContent = 'Copy invite link', 1800); } catch { notice('Could not copy the link. Copy it from your browser address bar.'); } };
-  els['new-room'].onclick = () => { if (active) { notice('Finish or cancel the current transfer first.'); return; } location.href = location.pathname; };
+  els.copy.onclick = async () => { try { await navigator.clipboard.writeText(roomLink()); els.copy.dataset.copied = 'true'; els.copy.textContent = tr('copied'); clearTimeout(copyTimer); copyTimer = setTimeout(() => { delete els.copy.dataset.copied; els.copy.textContent = tr('copy'); }, 1800); } catch { notice('copyFailed'); } };
+  els['new-room'].onclick = () => { if (active) { notice('finishFirst'); return; } location.href = location.pathname; };
   setInterval(() => { if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: 'heartbeat' })); }, 30_000);
+  applyLanguage();
   connect();
 })();

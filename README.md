@@ -34,6 +34,7 @@ The same page adapts to smaller screens. A public HTTPS deployment is required t
 - Send one file or select several files as a batch. The receiver accepts or declines each file.
 - Direct encrypted browser-to-browser transfer when the network allows it; optional TURN relay support for harder networks.
 - Transfer progress, average speed, cancellation, connection status, and clear errors when pairing fails.
+- English and Swedish interface, plus light and dark modes. Your choices are saved on each device; the initial theme follows your system setting.
 - Large files stream to disk on browsers with the File System Access API. A bounded memory download is used elsewhere.
 - Two participants per room, random 128-bit room links, no accounts, and no server-side file storage.
 
