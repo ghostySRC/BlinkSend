@@ -59,7 +59,7 @@ try{
   await Promise.all([sender.locator('#verify-match').click(),receiver.locator('#verify-match').click()]);
   await waitFor(()=>sender.locator('#send-text').isEnabled(),'verified send controls',25000);
 
-  const perfMiB=browserName==='chromium'?224:64;
+  const perfMiB=browserName==='chromium'?512:128;
   tempDir=await mkdtemp(join(tmpdir(),'blinksend-e2e-'));
   const perfPath=join(tempDir,'throughput.bin'),fh=await open(perfPath,'w'),block=Buffer.alloc(1024*1024,0x5a);
   try{for(let i=0;i<perfMiB;i++)await fh.write(block);}finally{await fh.close();}
@@ -78,7 +78,17 @@ try{
     throw new Error(error.message+' | states='+JSON.stringify(state)+' | browserErrors='+JSON.stringify(browserErrors.slice(-12)));
   }
   const perfSeconds=(Date.now()-perfStart)/1000;
-  if(perfSeconds>120)throw new Error(perfMiB+' MiB binary transfer exceeded smoke-test budget');
+  if(perfSeconds>180)throw new Error(perfMiB+' MiB binary transfer exceeded smoke-test budget');
+
+  // Reuse the verified session for a second file. This catches leaked/terminated
+  // hash workers, stale receive workers, and post-transfer state bugs.
+  const repeatPath=join(tempDir,'repeat.bin'),repeatHandle=await open(repeatPath,'w'),repeatBlock=Buffer.alloc(1024*1024,0xa5);
+  try{for(let i=0;i<16;i++)await repeatHandle.write(repeatBlock);}finally{await repeatHandle.close();}
+  await sender.locator('#send-another').click();
+  await sender.locator('#file').setInputFiles(repeatPath);
+  await waitFor(()=>receiver.locator('#incoming').isVisible(),'second binary transfer prompt',10000);
+  await receiver.locator('#accept').click();
+  await waitFor(()=>sender.locator('#post-transfer').isVisible(),'second binary transfer completion',30000);
 
   const message=`BlinkSend ${browserName} WebRTC check ${Date.now()}`;
   await sender.locator('#share-text').fill(message);
@@ -102,7 +112,7 @@ try{
   const rtlContext=await browser.newContext({locale:'ar-SA'});const rtl=await rtlContext.newPage();await rtl.goto(base,{waitUntil:'domcontentloaded'});
   if(await rtl.locator('#language').inputValue()!=='ar'||await rtl.locator('html').getAttribute('dir')!=='rtl')throw new Error('Arabic locale/RTL did not apply');await rtlContext.close();
 
-  console.log(JSON.stringify({browser:browserName,pairingCode:true,verificationCode:true,webrtcText:true,binaryFile:true,binaryMiB:perfMiB,binaryMiBPerSec:Number((perfMiB/perfSeconds).toFixed(2)),mobileLayout:true,browserLocale:true,rtl:true},null,2));
+  console.log(JSON.stringify({browser:browserName,pairingCode:true,verificationCode:true,webrtcText:true,binaryFile:true,binaryMiB:perfMiB,binaryMiBPerSec:Number((perfMiB/perfSeconds).toFixed(2)),sessionReuseFile:true,mobileLayout:true,browserLocale:true,rtl:true},null,2));
   await Promise.all([senderContext.close(),receiverContext.close()]);
 }finally{
   await browser?.close().catch(()=>{});

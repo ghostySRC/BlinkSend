@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.4.0-beta.6 — end-to-end LAN pipeline optimization
+
+### Speed and hot-path fixes
+- Remove the remaining main-thread copy on OPFS receives. Raw DataChannel ArrayBuffers are transferred to the receive worker in batches; batch assembly, hashing, and storage writes happen off the UI thread.
+- Keep OPFS writes inside the worker even when `createSyncAccessHandle()` is unavailable by falling back to worker-side `createWritable()` instead of silently returning to page-main-thread storage I/O.
+- Add a dedicated sender hash worker so SHA-256 runs concurrently with WebRTC instead of synchronously blocking each multi-megabyte sender read before packets can be queued; preserve that full-file hash across reconnect, missing-range resume, and verification retries.
+- Make connection calibration one-way in the real Send → Receive direction, increase the sample from 2 MiB to 8 MiB, use a negotiated benchmark message size, and cancel stale calibration safely before real file traffic can begin.
+- Detect low-latency direct paths and increase sender read-ahead to 32 MiB without inflating the browser-owned RTCDataChannel queue. Browser buffering stays bounded to 2–8 MiB and reserves room for the next packet before calling `send()`.
+- Add transient binary-send retry/backoff so short-lived browser queue pressure does not immediately abort a transfer.
+- Cap the application receiver-credit backlog at 32 MiB and self-tune it from actual committed write/hash batch time. This keeps the pipeline full without overwhelming Chromium/WebKit receive queues.
+- Remove per-packet DOM/progress work and unnecessary async yields from the sender hot loop. Sender speed/ETA now follow receiver-committed bytes instead of merely queued bytes.
+- Expose likely LAN routing, actual OPFS worker backend, current receive window, and committed write speed in Diagnostics.
+- Add a second verified file transfer to every browser E2E run to catch leaked workers and broken session reuse after a high-throughput transfer.
+- Cache the sender hash worker and bump the PWA shell cache to v6.
+
 ## 0.4.0-beta.5 — high-speed phone / OPFS receive path
 
 ### LAN and large-file performance
