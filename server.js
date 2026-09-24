@@ -18,14 +18,14 @@ const limits = new Map();
 const nearby = new Map();
 const pairCodes = new Map();
 const startedAt = Date.now();
-const trustProxy = /^(1|true|yes)$/i.test(process.env.TRUST_PROXY || '');
+const trustProxyEnabled = () => /^(1|true|yes)$/i.test(process.env.TRUST_PROXY || '');
 const counters = { httpRequests:0, websocketUpgrades:0, websocketConnections:0, roomJoins:0, rejectedJoins:0, signalsForwarded:0, malformedSignals:0, rateLimited:0, pairResolves:0, pairResolveMisses:0, iceCredentialsIssued:0 };
 const types = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.svg': 'image/svg+xml', '.webmanifest': 'application/manifest+json; charset=utf-8', '.json': 'application/json; charset=utf-8' };
 
 function normalizeIp(value){return String(value||'unknown').trim().replace(/^::ffff:/,'');}
 function clientIp(req) {
   const direct=normalizeIp(req.socket?.remoteAddress);
-  if(!trustProxy)return direct;
+  if(!trustProxyEnabled())return direct;
   const forwarded=normalizeIp(String(req.headers['x-forwarded-for']||'').split(',')[0].trim());
   return isIP(forwarded)?forwarded:direct;
 }
@@ -255,7 +255,7 @@ async function shutdown(signal='manual'){
 }
 const isMain=process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url);
 if(isMain){
-  server.listen(port,()=>logEvent('server.start',{port,trustProxy,metrics:!!process.env.METRICS_TOKEN}));
+  server.listen(port,()=>logEvent('server.start',{port,trustProxy:trustProxyEnabled(),metrics:!!process.env.METRICS_TOKEN}));
   for(const signal of ['SIGTERM','SIGINT'])process.once(signal,()=>shutdown(signal).then(()=>{process.exitCode=0;}));
 }
-export { server, rooms, iceTokens, limits, nearby, pairCodes, counters, clientIp, shutdown };
+export { server, rooms, iceTokens, limits, nearby, pairCodes, counters, clientIp, shutdown, trustProxyEnabled };
