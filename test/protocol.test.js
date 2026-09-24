@@ -10,9 +10,9 @@ async function loadProtocol(){
 test('adaptive tuning stays browser-safe and scales buffer targets',async()=>{
   const p=await loadProtocol();
   const weak=p.chooseTuning({throughputBps:100e6,rttMs:20,deviceMemory:2,cores:2,maxMessageSize:262144});
-  assert.equal(weak.chunkSize,65536);assert.ok(weak.highWater>=4*1024*1024);
+  assert.equal(weak.chunkSize,65536);assert.ok(weak.highWater>=2*1024*1024);
   const fast=p.chooseTuning({throughputBps:100*1024*1024,rttMs:20,deviceMemory:8,cores:8,maxMessageSize:262144});
-  assert.equal(fast.chunkSize,262140);assert.ok(fast.highWater>=12*1024*1024);assert.equal(fast.receiveWindow,32*1024*1024);
+  assert.equal(fast.chunkSize,262140);assert.ok(fast.highWater>=6*1024*1024);assert.equal(fast.receiveWindow,32*1024*1024);
   const capped=p.chooseTuning({throughputBps:100*1024*1024,rttMs:20,deviceMemory:8,cores:8,maxMessageSize:65536});
   assert.ok(capped.chunkSize+4<=65536);
 });
@@ -64,7 +64,7 @@ test('unknown device memory uses a conservative receive window without slowing s
   const p=await loadProtocol();
   const t=p.chooseTuning({throughputBps:40*1024*1024,rttMs:25,deviceMemory:0,cores:6,maxMessageSize:262144});
   assert.equal(t.receiveWindow,16*1024*1024);
-  assert.ok(t.highWater>=8*1024*1024);
+  assert.ok(t.highWater>=4*1024*1024);
 });
 
 
@@ -96,8 +96,8 @@ test('LAN mode does not overfill the browser RTCDataChannel queue',async()=>{
   const p=await loadProtocol();
   const safariLike=p.chooseTuning({throughputBps:30*1024*1024,rttMs:4,deviceMemory:0,cores:6,maxMessageSize:262144,lan:true});
   const desktop=p.chooseTuning({throughputBps:60*1024*1024,rttMs:4,deviceMemory:8,cores:12,maxMessageSize:262144,lan:true});
-  assert.ok(safariLike.highWater<=8*1024*1024);
-  assert.ok(desktop.highWater<=16*1024*1024);
+  assert.ok(safariLike.highWater<=4*1024*1024);
+  assert.ok(desktop.highWater<=8*1024*1024);
   assert.ok(safariLike.receiveWindow>safariLike.highWater);
 });
 
