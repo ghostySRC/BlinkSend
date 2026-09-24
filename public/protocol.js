@@ -5,8 +5,8 @@
     const unknownMemory=!deviceMemory;
     const negotiated=Number.isFinite(maxMessageSize)&&maxMessageSize>8?maxMessageSize-4:64*KiB;
     const chunkCap=Math.min(256*KiB,negotiated);
-    let preferred=weak?64*KiB:(lan||throughputBps>=24*MiB)?256*KiB:throughputBps>=6*MiB?192*KiB:128*KiB;
-    if(!throughputBps&&!weak)preferred=lan?256*KiB:128*KiB;
+    let preferred=weak?64*KiB:throughputBps>=12*MiB?256*KiB:throughputBps>=4*MiB?192*KiB:128*KiB;
+    if(!throughputBps&&!weak)preferred=128*KiB;
     const chunkSize=Math.max(16*KiB,Math.min(preferred,chunkCap));
     let highWater=weak?8*MiB:16*MiB;
     if(throughputBps>20*MiB&&!weak)highWater=24*MiB;
