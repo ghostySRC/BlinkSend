@@ -859,13 +859,15 @@
     if(!state||( !state.writer && !state.opfsWorker )||!state.writeBuffer?.length)return;
     const entries=state.writeBuffer,start=state.writeBufferStart,total=state.writeBufferBytes;
     state.writeBuffer=[];state.writeBufferBytes=0;state.writeBufferStart=-1;
+    let batchMs=0;
     if(state.opfsWorker){
-      const merged=new Uint8Array(total);let cursor=0;
-      for(const entry of entries){merged.set(entry.payload,cursor);cursor+=entry.payload.byteLength;}
-      await state.opfsWorker.call('write',{offset:start,buffer:merged.buffer},[merged.buffer]);
-      for(const entry of entries)BlinkTransfer.commitChunk(state,entry.seq,entry.payload.byteLength);
+      const workerEntries=entries.map(entry=>({buffer:entry.buffer,byteOffset:entry.byteOffset,byteLength:entry.byteLength}));
+      const transfers=[...new Set(workerEntries.map(entry=>entry.buffer))];
+      const result=await state.opfsWorker.call('write-batch',{start,total,entries:workerEntries},transfers);
+      batchMs=Math.max(.01,Number(result.writeMs)||0);
+      for(const entry of entries)BlinkTransfer.commitChunk(state,entry.seq,entry.byteLength);
     }else{
-      const merged=new Uint8Array(total);let cursor=0;
+      const started=performance.now(),merged=new Uint8Array(total);let cursor=0;
       for(const entry of entries){merged.set(entry.payload,cursor);cursor+=entry.payload.byteLength;}
       try{await state.writer.write({type:'write',position:start,data:merged});}
       catch{await state.writer.seek(start);await state.writer.write(merged);}
@@ -873,6 +875,11 @@
       for(const entry of entries){if(entry.seq!==expectedSeq){sequential=false;break;}expectedSeq++;}
       if(sequential)state.hasher.update(merged);else state.hashDirty=true;
       for(const entry of entries)BlinkTransfer.commitChunk(state,entry.seq,entry.payload.byteLength);
+      batchMs=Math.max(.01,performance.now()-started);
+    }
+    if(batchMs>0){
+      const adapted=BlinkProtocol.adaptReceiveWindow({current:state.flowWindow,previousBps:state.receiveWriteBps,batchBytes:total,batchMs});
+      state.flowWindow=adapted.window;state.receiveWriteBps=adapted.throughputBps;
     }
     if(state===active){progress(state.received,state.size,state.started,'receiving');sendFlowUpdate(state);}
     if(state===active&&state.persistentHandle&&state.received-(state.committedBytes||0)>=(tuning.checkpointBytes||128*1024*1024)){
@@ -1013,7 +1020,7 @@
               try{active.opfsWorker=await createOpfsWorkerBridge(active.opfs.handle,{truncate:true});active.writer=null;}
               catch{active.writer=await active.opfs.handle.createWritable();}
             }else if(active.persistentHandle){active.writer=await active.persistentHandle.createWritable();}else active.chunks=new Array(totalChunks);
-            active.received=0;active.committedBytes=0;active.nextChunk=0;active.receivedMap=new Uint8Array(Math.ceil(totalChunks/8));active.totalChunks=totalChunks;active.hasher=new BlinkSHA256();active.hashDirty=false;active.writeBuffer=[];active.writeBufferStart=-1;active.writeBufferBytes=0;active.lastFlowSent=0;active.lastFlowAt=0;active.paused=false;
+            active.received=0;active.committedBytes=0;active.nextChunk=0;active.receivedMap=new Uint8Array(Math.ceil(totalChunks/8));active.totalChunks=totalChunks;active.hasher=new BlinkSHA256();active.hashDirty=false;active.writeBuffer=[];active.writeBufferStart=-1;active.writeBufferBytes=0;active.receiveWriteBps=0;active.lastFlowSent=0;active.lastFlowAt=0;active.paused=false;
             channel.send(JSON.stringify({type:'retry',id:msg.id,attempt:active.retries}));progress(0,active.size,active.started,'receiving');return;
           }
           stopTransfer('hashMismatch');return;
@@ -1064,7 +1071,7 @@
         }
         if(!active.writeBuffer?.length){active.writeBuffer=[];active.writeBufferStart=offset;active.writeBufferBytes=0;}
         if(active.opfsWorker){
-          active.writeBuffer.push({seq,offset,payload});
+          active.writeBuffer.push({seq,offset,buffer:data,byteOffset:payload.byteOffset,byteLength:payload.byteLength});
         }else{
           const copied=payload.slice();active.writeBuffer.push({seq,offset,payload:copied});
         }
@@ -1101,7 +1108,7 @@
     const receiveChunkSize=request.chunkSize||defaultChunkSize,receiveState=BlinkTransfer.makeReceiveState(request.size,receiveChunkSize);if(!receiveState){notice('transferFailed');return;}const totalChunks=receiveState.totalChunks;
     const flowWindow=Math.min(BlinkSecurity.LIMITS.flowWindowMax,Math.max(BlinkSecurity.LIMITS.flowWindowMin,tuning.receiveWindow||16*1024*1024));
     const opfsWorker=opfs?.worker||null;if(opfs)delete opfs.worker;
-    active = { ...request, direction:'receive', ...receiveState, committedBytes:0, hasher:new BlinkSHA256(), hashDirty:false, retries:0, chunks:(writer||opfsWorker) ? null : new Array(totalChunks), writer, opfsWorker, opfs, persistentHandle, writeBuffer:[], writeBufferStart:-1, writeBufferBytes:0, flowWindow, lastFlowSent:0, lastFlowAt:0, started:Date.now(), paused:false };
+    active = { ...request, direction:'receive', ...receiveState, committedBytes:0, hasher:new BlinkSHA256(), hashDirty:false, retries:0, chunks:(writer||opfsWorker) ? null : new Array(totalChunks), writer, opfsWorker, opfs, persistentHandle, writeBuffer:[], writeBufferStart:-1, writeBufferBytes:0, flowWindow, receiveWriteBps:0, lastFlowSent:0, lastFlowAt:0, started:Date.now(), paused:false };
     showTransfer(request.relativePath || request.name, request.size);
     await persistReceiveSession();
     channel.send(JSON.stringify({ type:'accept', id:request.id, windowBytes:flowWindow }));
@@ -1247,7 +1254,7 @@
         try{opfsWorker=await createOpfsWorkerBridge(s.handle,{resumeBytes:prefixBytes});}catch{writer=await s.handle.createWritable({keepExistingData:true});}
       }else writer=await s.handle.createWritable({keepExistingData:true});
       const restoredMap=s.receivedMap instanceof Uint8Array?s.receivedMap:BlinkTransfer.makePrefixBitmap(totalChunks,nextChunk),restoredState=BlinkTransfer.makeReceiveState(s.size,restoredChunk,restoredMap,nextChunk,received),hashDirty=received!==prefixBytes;if(!restoredState){notice('resumeUnavailable');opfsWorker?.terminate?.();await discardResume();return;}
-      active={id:s.transferId,direction:'receive',name:s.name,size:s.size,relativePath:s.relativePath||'',...restoredState,committedBytes:received,hasher:opfsWorker?new BlinkSHA256():await rebuildReceiveHasher(s.handle,prefixBytes),hashDirty,retries:0,chunks:null,writer,opfsWorker,persistentHandle:s.handle,opfs:restoredOpfs,writeBuffer:[],writeBufferStart:-1,writeBufferBytes:0,flowWindow:tuning.receiveWindow||16*1024*1024,lastFlowSent:received,lastFlowAt:0,started:Date.now(),paused:true,batchId:s.batchId||null};
+      active={id:s.transferId,direction:'receive',name:s.name,size:s.size,relativePath:s.relativePath||'',...restoredState,committedBytes:received,hasher:opfsWorker?new BlinkSHA256():await rebuildReceiveHasher(s.handle,prefixBytes),hashDirty,retries:0,chunks:null,writer,opfsWorker,persistentHandle:s.handle,opfs:restoredOpfs,writeBuffer:[],writeBufferStart:-1,writeBufferBytes:0,flowWindow:tuning.receiveWindow||16*1024*1024,receiveWriteBps:0,lastFlowSent:received,lastFlowAt:0,started:Date.now(),paused:true,batchId:s.batchId||null};
       showTransfer(s.relativePath || s.name,s.size); active.stage='resuming'; renderTransfer();
     }
     els['resume-card'].hidden=true; resumeSession=null;
