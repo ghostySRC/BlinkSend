@@ -41,7 +41,7 @@ Use the language selector and theme button in the header. BlinkSend remembers bo
 - SHA-256 mismatches trigger up to two retries of only the affected file, so a bad file inside a large folder does not automatically discard the whole batch.
 - Network-interface changes (for example Wi-Fi to hotspot) trigger an ICE restart from the offerer; active transfers remain paused until the connection is usable again.
 - Restart-safe resume on supported browsers: persistent file handles and IndexedDB session metadata allow an interrupted transfer to continue after a page reload. Receiver writes are checkpointed to disk and a chunk bitmap/range map records what is present, so reconnects can request missing ranges rather than blindly restarting.
-- Send clipboard text, commands, snippets, or `http://` / `https://` links directly to the paired device without creating a file first. Text is capped at 256 KB.
+- Send clipboard text, commands, snippets, or `http://` / `https://` links directly to the paired device without creating a file first. Text is capped at 256 KB and framed into small UTF-8 control messages instead of relying on one oversized SCTP message.
 - Paste-to-send: when the sender page is focused, pasting a clipboard file/image queues it; pasting text sends it directly.
 - Automatic connection calibration after peer verification: BlinkSend measures a small 512 KiB WebRTC sample, combines it with RTT/device capability, and tunes the data-channel buffer automatically. Transfer chunks remain conservatively capped at 64 KiB for browser compatibility.
 - Live transfer speed uses smoothing instead of a noisy instant value, includes an ETA, and folder batches show whole-batch bytes plus the current file.
@@ -87,7 +87,7 @@ sequenceDiagram
 
 The Node server serves the web interface and exchanges WebRTC connection details over `/signal`. File contents travel over the WebRTC data channel. When a TURN relay is configured and needed, the relay carries encrypted WebRTC traffic and consumes relay bandwidth. The server keeps room membership in memory, with a maximum of two sockets per room; inactive rooms expire after 30 minutes. A server restart disconnects active rooms.
 
-For normal files, the recipient accepts the transfer before data starts. Folder transfers can be accepted once as a batch; on supported browsers the receiver chooses one destination and BlinkSend recreates nested directories automatically. Files are split into numbered chunks. The receiver maintains a compact chunk bitmap and converts gaps into missing ranges during reconnect, allowing the sender to retransmit only those ranges. Network reconnects also attempt an ICE restart when the browser reports a network-interface change. When both sides use persistent File System Access handles, BlinkSend also stores the active session in IndexedDB so a page reload can resume the current transfer after the user grants access again. Browsers without persistent handles keep the in-page resume behavior only. Offline delivery is not supported, and only one file is active at a time.
+For normal files, the recipient accepts the transfer before data starts. Folder transfers can be accepted once as a batch; on supported browsers the receiver chooses one destination and BlinkSend recreates nested directories automatically. Incoming relative paths are normalized and traversal segments such as `..` are rejected before any directory handle is opened. Files are split into numbered chunks. The receiver maintains a compact chunk bitmap and converts gaps into missing ranges during reconnect, allowing the sender to retransmit only those ranges. Network reconnects also attempt an ICE restart when the browser reports a network-interface change. When both sides use persistent File System Access handles, BlinkSend also stores the active session in IndexedDB so a page reload can resume the current transfer after the user grants access again. Browsers without persistent handles keep the in-page resume behavior only. Offline delivery is not supported, and only one file is active at a time.
 
 ## Browser and file limits
 
@@ -97,7 +97,7 @@ For normal files, the recipient accepts the transfer before data starts. Folder 
 | No save picker, but supports Origin Private File System (OPFS) | Streams large files into temporary browser-managed disk storage, then starts the download | No app-imposed size limit; available storage/quota and browser limits still apply |
 | No save picker and no OPFS | Buffers the file in memory, then starts a download | 200 MB per file |
 
-The 200 MB memory fallback now applies only when the browser exposes neither a save-file picker nor OPFS. Transfer speed depends on the sender's upload connection, the receiver's download connection, Wi-Fi quality, browser performance, and whether a relay is required. BlinkSend performs a short post-verification calibration and tunes its WebRTC send-buffer target while keeping messages at or below 64 KiB for compatibility. It does not promise a fixed speed.
+The 200 MB memory fallback now applies only when the browser exposes neither a save-file picker nor OPFS. Transfer speed depends on the sender's upload connection, the receiver's download connection, Wi-Fi quality, browser performance, and whether a relay is required. BlinkSend performs a short post-verification calibration before enabling new sends, preventing calibration frames from overlapping real file data, and tunes its WebRTC send-buffer target while keeping file messages at or below 64 KiB for compatibility. It does not promise a fixed speed.
 
 ## Deploy your own instance
 
@@ -157,8 +157,11 @@ BlinkSend includes in-memory per-IP limits for room joins, WebSocket upgrades, Q
 ```bash
 npm ci
 npm test
+npm run bench
 npm start
 ```
+
+`npm test` covers signaling abuse controls, SHA-256 vectors, browser-script syntax, PWA manifest invariants, UTF-8 text framing, path traversal rejection, corruption detection, a 10,000-file manifest, and a sparse chunk bitmap sized for a 5 GiB transfer without allocating 5 GiB of data. `npm run bench` prints repeatable timings for the 5 GiB-equivalent chunk map and 10,000-file manifest operations.
 
 `public/` contains the browser interface and transfer logic. `server.js` serves static files, QR codes, temporary ICE credentials, and WebSocket signaling. `test/` covers the server's room behavior. The project uses no frontend build step.
 

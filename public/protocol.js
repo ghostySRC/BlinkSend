@@ -34,5 +34,20 @@
     return out;
   }
   function markChunk(bitmap,index){bitmap[index>>3]|=1<<(index&7);return bitmap;}
-  window.BlinkProtocol={chooseTuning,formatEta,connectionQuality,missingRanges,markChunk};
+  function validateRanges(ranges,total){
+    if(!Array.isArray(ranges)||ranges.length>128||!Number.isSafeInteger(total)||total<0)return false;let last=-1;
+    for(const r of ranges){if(!Array.isArray(r)||r.length!==2||!Number.isSafeInteger(r[0])||!Number.isSafeInteger(r[1])||r[0]<0||r[1]<r[0]||r[1]>=total||r[0]<=last)return false;last=r[1];}
+    return true;
+  }
+  function sanitizeRelativePath(value){
+    if(value==null||value==='')return '';if(typeof value!=='string'||value.length>4096)return null;
+    const raw=value.replace(/\\/g,'/').split('/').filter(Boolean);if(raw.length>128)return null;const safe=[];
+    for(const original of raw){if(original==='.'||original==='..')return null;const part=original.replace(/[\x00-\x1f\x7f]/g,'_').trim();if(!part||part==='.'||part==='..'||part.length>255)return null;safe.push(part);}
+    return safe.join('/');
+  }
+  function splitUtf8(text,maxBytes=24*KiB){
+    text=String(text||'');if(!text)return [];const enc=new TextEncoder(),out=[];let part='',bytes=0;
+    for(const ch of text){const n=enc.encode(ch).byteLength;if(n>maxBytes)throw new Error('character exceeds chunk size');if(bytes+n>maxBytes&&part){out.push(part);part='';bytes=0;}part+=ch;bytes+=n;}if(part)out.push(part);return out;
+  }
+  window.BlinkProtocol={chooseTuning,formatEta,connectionQuality,missingRanges,markChunk,validateRanges,sanitizeRelativePath,splitUtf8};
 })();

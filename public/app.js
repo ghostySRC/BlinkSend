@@ -335,12 +335,12 @@
   const maxMemoryFile = 200 * 1024 * 1024;
   let tuning=BlinkProtocol.chooseTuning({deviceMemory:navigator.deviceMemory||4,cores:navigator.hardwareConcurrency||4});
   let connectionMetrics={rttMs:0,throughputBps:0,relayed:false};
-  let benchmarkState=null, benchmarkIncoming='';
+  let benchmarkState=null, benchmarkIncoming='', incomingText=null;
   const maxTextBytes = 256 * 1024;
   const supportsOpfs = !!navigator.storage?.getDirectory;
   const format = bytes => bytes < 1024 ? `${bytes} B` : bytes < 1048576 ? `${(bytes / 1024).toFixed(1)} KB` : bytes < 1073741824 ? `${(bytes / 1048576).toFixed(1)} MB` : `${(bytes / 1073741824).toFixed(2)} GB`;
   let socket, pc, channel, pending, active, incomingQueue = Promise.resolve(), signalQueue = Promise.resolve(), connectTimer, iceToken = '', isOfferer=false, iceRestartTimer;
-  let readyLabel = 'ready', peerVerified = false, localVerified = false, remoteVerified = false, verificationCode = '';
+  let readyLabel = 'ready', peerVerified = false, localVerified = false, remoteVerified = false, verificationCode = '', calibrating=false;
   let outgoing = [], batchTotal = 0, batchDone = 0, mode = '', outgoingBatch = null, incomingBatch = null, resumeSession = null, peerName = '', lastReceivedFile = null, pendingSharedTarget=null, installPrompt=null;
   const roomPattern = /^[a-f0-9]{32}$/;
   let room = location.hash.slice(1).toLowerCase();
@@ -399,7 +399,7 @@
     els.status.textContent = tr(key, vars);
     els['status-dot'].classList.toggle('ready', ready);
     els['peer-name'].textContent = peerName ? peerName : '';
-    const unlocked = ready && peerVerified && mode === 'send';
+    const unlocked = ready && peerVerified && !calibrating && mode === 'send';
     els.file.disabled = !unlocked || !!active || !!pending;
     els.folder.disabled = els.file.disabled;
     els['choose-folder'].disabled = els.file.disabled;
@@ -627,11 +627,11 @@
     channel.send(JSON.stringify({type:'benchmark-end',id:benchmarkState.id,bytes:benchmarkState.bytes}));
   }
   function maybeFinishVerification() {
-    if (!localVerified || !remoteVerified || peerVerified) return;
-    peerVerified = true; els['verify-peer'].hidden = true; status('verified', true); runBenchmark(); flushSharedTarget();
-    if (active?.direction === 'receive' && active.paused && channel?.readyState === 'open') sendResumeMap();
-    if (active?.direction === 'send' && active.pendingRanges) { const ranges=active.pendingRanges;delete active.pendingRanges;resumeOutgoingRanges(ranges); }
-    else if (active?.direction === 'send' && Number.isSafeInteger(active.pendingResume)) { const next = active.pendingResume; delete active.pendingResume; resumeOutgoing(next); }
+    if(!localVerified||!remoteVerified||peerVerified)return;
+    peerVerified=true;els['verify-peer'].hidden=true;
+    if(active){status('verified',true);if(active.direction==='receive'&&active.paused&&channel?.readyState==='open')sendResumeMap();if(active.direction==='send'&&active.pendingRanges){const ranges=active.pendingRanges;delete active.pendingRanges;resumeOutgoingRanges(ranges);}else if(active.direction==='send'&&Number.isSafeInteger(active.pendingResume)){const next=active.pendingResume;delete active.pendingResume;resumeOutgoing(next);}return;}
+    calibrating=true;status('verified',true);
+    runBenchmark().catch(()=>{}).finally(()=>{calibrating=false;status('verified',true);flushSharedTarget();});
   }
   function bitmapHas(bitmap,index){return !!(bitmap?.[index>>3]&(1<<(index&7)));}
   function makePrefixBitmap(totalChunks,prefixChunks){const map=new Uint8Array(Math.ceil(totalChunks/8));for(let i=0;i<Math.min(totalChunks,prefixChunks);i++)BlinkProtocol.markChunk(map,i);return map;}
@@ -647,17 +647,13 @@
     if(state.opfs?.handle)return hashWholeFile(await state.opfs.handle.getFile(),state.chunkSize);
     const h=new BlinkSHA256();for(const part of state.chunks||[]){if(part)h.update(part);}return h.hex();
   }
-  function validRanges(ranges,total){
-    if(!Array.isArray(ranges)||ranges.length>128)return false;let last=-1;
-    for(const r of ranges){if(!Array.isArray(r)||r.length!==2||!Number.isSafeInteger(r[0])||!Number.isSafeInteger(r[1])||r[0]<0||r[1]<r[0]||r[1]>=total||r[0]<=last)return false;last=r[1];}
-    return true;
-  }
+
   async function resumeOutgoingRanges(ranges){
     if(!active||active.direction!=='send')return;
     const size=active.chunkSize||defaultChunkSize,total=Math.ceil(active.file.size/size);
-    if(!validRanges(ranges,total))return;
+    if(!BlinkProtocol.validateRanges(ranges,total))return;
     active.fullHash=await hashWholeFile(active.file,size);active.hasher=null;active.sendRanges=ranges.map(r=>[r[0],r[1]]);active.rangeIndex=0;active.rangeSeq=active.sendRanges[0]?.[0]??total;
-    let missing=0;for(const [s,e] of active.sendRanges){for(let i=s;i<=e;i++)missing+=Math.min(size,active.file.size-i*size);}
+    let missing=0;for(const [s,e] of active.sendRanges){const start=s*size,end=Math.min(active.file.size,(e+1)*size);missing+=Math.max(0,end-start);}
     active.sent=Math.max(0,active.file.size-missing);active.paused=false;active.stage='resuming';progress(active.sent,active.file.size,active.started,'sending');pump(active.id);
   }
   async function resumeOutgoing(nextChunk) {
@@ -748,9 +744,9 @@
     if (msg.type === 'batch-decline' && outgoingBatch?.id === msg.id) { outgoing=[]; outgoingBatch=null; batchTotal=0; batchDone=0; notice('declined'); return; }
     if (msg.type === 'batch-complete' && incomingBatch?.id === msg.id) { incomingBatch=null; await clearBatchContext(); return; }
     if (msg.type === 'request') {
-      if (active || pending || typeof msg.name !== 'string' || msg.name.length > 255 || !Number.isSafeInteger(msg.size) || msg.size < 0 || typeof msg.id !== 'string') { channel.send(JSON.stringify({ type: 'decline', id: msg.id })); return; }
-      const safeName = msg.name.replace(/[\\/\x00-\x1f\x7f]/g, '_').trim() || 'download';
-      const safePath = typeof msg.relativePath === 'string' ? msg.relativePath.split('/').filter(Boolean).map(part => part.replace(/[\\\x00-\x1f\x7f]/g, '_')).join('/') : '';
+      if (active || pending || typeof msg.name !== 'string' || msg.name.length > 255 || !Number.isSafeInteger(msg.size) || msg.size < 0 || typeof msg.id !== 'string' || msg.id.length>80 || (msg.batchId!=null&&(typeof msg.batchId!=='string'||msg.batchId.length>80))) { channel.send(JSON.stringify({ type: 'decline', id: msg.id })); return; }
+      let safeName = msg.name.replace(/[\\/\x00-\x1f\x7f]/g, '_').trim() || 'download';if(safeName==='.'||safeName==='..')safeName='_';
+      const safePath=BlinkProtocol.sanitizeRelativePath(msg.relativePath);if(safePath===null){channel.send(JSON.stringify({type:'decline',id:msg.id}));return;}
       const requestedChunk=Number.isSafeInteger(msg.chunkSize)&&msg.chunkSize>=16*1024&&msg.chunkSize<=64*1024?msg.chunkSize:defaultChunkSize;
       pending = { id: msg.id, name: safeName, relativePath: safePath, size: msg.size, chunkSize:requestedChunk, batchId:typeof msg.batchId === 'string' ? msg.batchId : null };
       if (pending.batchId && incomingBatch?.id === pending.batchId && incomingBatch.accepted) { await acceptPendingFile(true); return; }
@@ -767,7 +763,7 @@
     }
     if(msg.type==='resume-map'&&active?.id===msg.id&&active.direction==='send'){
       const total=Math.ceil(active.file.size/(active.chunkSize||defaultChunkSize));
-      if(!validRanges(msg.ranges,total))return;
+      if(!BlinkProtocol.validateRanges(msg.ranges,total))return;
       if(!peerVerified)active.pendingRanges=msg.ranges;else await resumeOutgoingRanges(msg.ranges);
     }
     if(msg.type==='retry'&&active?.id===msg.id&&active.direction==='send'){
@@ -793,16 +789,11 @@
           }
           stopTransfer('hashMismatch');return;
         }
-        if (active.opfs) {
-          const file = await active.opfs.handle.getFile(); const url = URL.createObjectURL(file); const anchor = document.createElement('a'); anchor.href = url; anchor.download = active.name; document.body.append(anchor); anchor.click(); anchor.remove(); setTimeout(() => URL.revokeObjectURL(url), 60_000); active.opfs.root.removeEntry(active.opfs.tempName).catch(() => {});
-        } else if (!active.writer) { const url = URL.createObjectURL(new Blob(active.chunks)); const anchor = document.createElement('a'); anchor.href = url; anchor.download = active.name; document.body.append(anchor); anchor.click(); anchor.remove(); setTimeout(() => URL.revokeObjectURL(url), 60_000); }
-        channel.send(JSON.stringify({ type: 'saved', id: msg.id, sha256: localHash }));
         let shareFile=null;
-        try {
-          if (active.persistentHandle) shareFile=await active.persistentHandle.getFile();
-          else if (active.opfs?.handle) shareFile=await active.opfs.handle.getFile();
-          else if (active.chunks) shareFile=new File(active.chunks,active.name,{type:'application/octet-stream'});
-        } catch {}
+        if(active.opfs){shareFile=await active.opfs.handle.getFile();const url=URL.createObjectURL(shareFile),anchor=document.createElement('a');anchor.href=url;anchor.download=active.name;document.body.append(anchor);anchor.click();anchor.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);}
+        else if(active.persistentHandle){try{shareFile=await active.persistentHandle.getFile();}catch{}}
+        else if(active.chunks){shareFile=new File(active.chunks,active.name,{type:'application/octet-stream'});const url=URL.createObjectURL(shareFile),anchor=document.createElement('a');anchor.href=url;anchor.download=active.name;document.body.append(anchor);anchor.click();anchor.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);}
+        channel.send(JSON.stringify({ type: 'saved', id: msg.id, sha256: localHash }));
         lastReceivedFile=shareFile;
         els['share-last-file'].hidden=!(shareFile && navigator.share && (!navigator.canShare || navigator.canShare({files:[shareFile]})));
         await recordHistory({name:active.relativePath||active.name,size:active.size,direction:'receive',verified:true,sha256:localHash});
@@ -818,14 +809,13 @@
       completionCue();
       finishOutgoing('verifiedSent', { current: batchDone + 1, total: batchTotal });
     }
-    if (msg.type === 'text' && typeof msg.text === 'string') {
-      const bytes=new TextEncoder().encode(msg.text).byteLength;if(bytes>maxTextBytes)return;
-      els['received-content'].textContent=msg.text;els['received-text'].hidden=false;
-      let link='';try{const u=new URL(msg.text.trim());if(['http:','https:'].includes(u.protocol))link=u.href;}catch{}
-      els['received-link'].hidden=!link;if(link){els['received-link'].href=link;els['received-link'].textContent=link;}
-      await recordHistory({name:link||'Text',size:bytes,direction:'receive',verified:false,type:'text'});
-      completionCue();
+    if(msg.type==='text-start'){
+      if(typeof msg.id!=='string'||msg.id.length>80||!Number.isSafeInteger(msg.parts)||msg.parts<1||msg.parts>64||!Number.isSafeInteger(msg.bytes)||msg.bytes<0||msg.bytes>maxTextBytes)return;
+      incomingText={id:msg.id,parts:new Array(msg.parts),bytes:msg.bytes};return;
     }
+    if(msg.type==='text-part'){if(!incomingText||msg.id!==incomingText.id||!Number.isSafeInteger(msg.index)||msg.index<0||msg.index>=incomingText.parts.length||typeof msg.text!=='string'||new TextEncoder().encode(msg.text).byteLength>32*1024)return;incomingText.parts[msg.index]=msg.text;return;}
+    if(msg.type==='text-end'){if(!incomingText||msg.id!==incomingText.id||incomingText.parts.some(x=>typeof x!=='string'))return;const text=incomingText.parts.join(''),expected=incomingText.bytes;incomingText=null;if(new TextEncoder().encode(text).byteLength!==expected)return;await receiveTextValue(text);return;}
+    if (msg.type === 'text' && typeof msg.text === 'string') { const bytes=new TextEncoder().encode(msg.text).byteLength;if(bytes<=maxTextBytes)await receiveTextValue(msg.text); }
   }
   async function receiveChunk(data) {
     if(!active||active.direction!=='receive')return;
@@ -903,11 +893,21 @@
     catch (error) { if (error.name !== 'AbortError') notice('saveLocationFailed'); }
   };
   els.folder.onchange = () => { const files=[...els.folder.files]; const name=files[0]?.webkitRelativePath?.split('/')[0] || ''; enqueueEntries(files.map(file=>({file,relativePath:file.webkitRelativePath||''})), name); };
+  async function receiveTextValue(text){
+    const bytes=new TextEncoder().encode(text).byteLength;if(bytes>maxTextBytes)return;
+    els['received-content'].textContent=text;els['received-text'].hidden=false;let link='';
+    try{const u=new URL(text.trim());if(['http:','https:'].includes(u.protocol))link=u.href;}catch{}
+    els['received-link'].hidden=!link;if(link){els['received-link'].href=link;els['received-link'].textContent=link;}
+    await recordHistory({name:link||'Text',size:bytes,direction:'receive',verified:false,type:'text'});completionCue();
+  }
   async function sendTextValue(value) {
     if(channel?.readyState!=='open'||!peerVerified)return;
     const text=String(value||'');if(!text.trim())return;
     const bytes=new TextEncoder().encode(text).byteLength;if(bytes>maxTextBytes){notice('textTooLarge');return;}
-    channel.send(JSON.stringify({type:'text',text}));
+    const parts=BlinkProtocol.splitUtf8(text);const id=crypto.randomUUID();
+    channel.send(JSON.stringify({type:'text-start',id,parts:parts.length,bytes}));
+    for(let i=0;i<parts.length;i++)channel.send(JSON.stringify({type:'text-part',id,index:i,text:parts[i]}));
+    channel.send(JSON.stringify({type:'text-end',id}));
     await recordHistory({name:'Text',size:bytes,direction:'send',verified:false,type:'text'});
     notice('textSent');
   }
@@ -982,13 +982,13 @@
       active={ id:s.transferId, direction:'send', file, sourceEntry:{handle:s.handle,file,relativePath:s.relativePath}, relativePath:s.relativePath||'', batchId:s.batchId||null, chunkSize:s.chunkSize||defaultChunkSize,highWater:tuning.highWater,sent:0,nextChunk:0,hasher:new BlinkSHA256(),started:Date.now(),accepted:true,paused:true };
       showTransfer(s.relativePath || s.name, s.size); active.stage='resuming'; renderTransfer();
     } else {
-      const existing=await s.handle.getFile(); const bytes=Math.min(s.received||0,existing.size);
-      const writer=await s.handle.createWritable({keepExistingData:true}); await writer.seek(bytes);
-      incomingBatch = s.batchId ? { id:s.batchId, name:s.batchName, rootHandle:s.batchRootHandle, accepted:true } : null;
-      let restoredOpfs=null; if (s.opfs && s.opfsTempName) { const root=await navigator.storage.getDirectory(); restoredOpfs={root,handle:s.handle,tempName:s.opfsTempName}; }
-      const restoredChunk=s.chunkSize||defaultChunkSize,totalChunks=Math.ceil(s.size/restoredChunk);
-      const restoredMap=s.receivedMap instanceof Uint8Array?s.receivedMap:makePrefixBitmap(totalChunks,Math.floor(bytes/restoredChunk));
-      active={ id:s.transferId,direction:'receive',name:s.name,size:s.size,relativePath:s.relativePath||'',chunkSize:restoredChunk,received:bytes,committedBytes:bytes,nextChunk:Number.isSafeInteger(s.nextChunk)?s.nextChunk:Math.floor(bytes/restoredChunk),receivedMap:restoredMap,hasher:await rebuildReceiveHasher(s.handle,bytes),hashDirty:false,retries:0,chunks:null,writer,persistentHandle:s.handle,opfs:restoredOpfs,started:Date.now(),paused:true,batchId:s.batchId||null };
+      const existing=await s.handle.getFile(),restoredChunk=s.chunkSize||defaultChunkSize,totalChunks=Math.ceil(s.size/restoredChunk);
+      const received=Math.min(Number(s.received)||0,s.size),nextChunk=Number.isSafeInteger(s.nextChunk)?Math.min(s.nextChunk,totalChunks):Math.floor(received/restoredChunk),prefixBytes=Math.min(s.size,nextChunk*restoredChunk);
+      const writer=await s.handle.createWritable({keepExistingData:true});
+      incomingBatch=s.batchId?{id:s.batchId,name:s.batchName,rootHandle:s.batchRootHandle,accepted:true}:null;
+      let restoredOpfs=null;if(s.opfs&&s.opfsTempName){const root=await navigator.storage.getDirectory();restoredOpfs={root,handle:s.handle,tempName:s.opfsTempName};}
+      const restoredMap=s.receivedMap instanceof Uint8Array?s.receivedMap:makePrefixBitmap(totalChunks,nextChunk),hashDirty=received!==prefixBytes;
+      active={id:s.transferId,direction:'receive',name:s.name,size:s.size,relativePath:s.relativePath||'',chunkSize:restoredChunk,received,committedBytes:received,nextChunk,receivedMap:restoredMap,hasher:await rebuildReceiveHasher(s.handle,prefixBytes),hashDirty,retries:0,chunks:null,writer,persistentHandle:s.handle,opfs:restoredOpfs,started:Date.now(),paused:true,batchId:s.batchId||null};
       showTransfer(s.relativePath || s.name,s.size); active.stage='resuming'; renderTransfer();
     }
     els['resume-card'].hidden=true; resumeSession=null;
