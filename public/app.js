@@ -430,12 +430,12 @@
   }
   async function persistSendSession(entry) {
     if (!window.BlinkStore || !entry?.handle || !room || !active) return;
-    const batchEntries = outgoingBatch?.entries?.filter(x => x.handle).map(x => ({ handle:x.handle, name:x.file.name, size:x.file.size, relativePath:x.relativePath })) || null;
+    const batchEntries = outgoingBatch?.entries?.filter(x => x.handle).map(x => ({ handle:x.handle, name:x.file?.name || x.name, size:x.file?.size ?? x.size, relativePath:x.relativePath })) || null;
     try { await BlinkStore.put({ id:sessionKey(), room, role:'send', transferId:active.id, handle:entry.handle, name:active.file.name, size:active.file.size, relativePath:active.relativePath, batchId:outgoingBatch?.id || null, batchName:outgoingBatch?.name || null, batchEntries, batchDone }); } catch {}
   }
   async function persistReceiveSession() {
     if (!window.BlinkStore || !active?.persistentHandle || !room) return;
-    try { await BlinkStore.put({ id:sessionKey(), room, role:'receive', transferId:active.id, handle:active.persistentHandle, name:active.name, size:active.size, relativePath:active.relativePath, received:active.committedBytes || 0, nextChunk:Math.floor((active.committedBytes || 0)/chunkSize), batchId:incomingBatch?.id || null, batchName:incomingBatch?.name || null, batchRootHandle:incomingBatch?.rootHandle || null }); } catch {}
+    try { await BlinkStore.put({ id:sessionKey(), room, role:'receive', transferId:active.id, handle:active.persistentHandle, name:active.name, size:active.size, relativePath:active.relativePath, received:active.committedBytes || 0, nextChunk:Math.floor((active.committedBytes || 0)/chunkSize), batchId:incomingBatch?.id || null, batchName:incomingBatch?.name || null, batchRootHandle:incomingBatch?.rootHandle || null, opfs:!!active.opfs, opfsTempName:active.opfs?.tempName || null }); } catch {}
   }
   async function persistBatchContext() {
     if (!window.BlinkStore || !room || !incomingBatch?.rootHandle) return;
@@ -729,7 +729,8 @@
       const existing=await s.handle.getFile(); const bytes=Math.min(s.received||0,existing.size);
       const writer=await s.handle.createWritable({keepExistingData:true}); await writer.seek(bytes);
       incomingBatch = s.batchId ? { id:s.batchId, name:s.batchName, rootHandle:s.batchRootHandle, accepted:true } : null;
-      active={ id:s.transferId,direction:'receive',name:s.name,size:s.size,relativePath:s.relativePath||'',received:bytes,committedBytes:bytes,nextChunk:Math.floor(bytes/chunkSize),hasher:await rebuildReceiveHasher(s.handle,bytes),chunks:null,writer,persistentHandle:s.handle,started:Date.now(),paused:true,batchId:s.batchId||null };
+      let restoredOpfs=null; if (s.opfs && s.opfsTempName) { const root=await navigator.storage.getDirectory(); restoredOpfs={root,handle:s.handle,tempName:s.opfsTempName}; }
+      active={ id:s.transferId,direction:'receive',name:s.name,size:s.size,relativePath:s.relativePath||'',received:bytes,committedBytes:bytes,nextChunk:Math.floor(bytes/chunkSize),hasher:await rebuildReceiveHasher(s.handle,bytes),chunks:null,writer,persistentHandle:s.handle,opfs:restoredOpfs,started:Date.now(),paused:true,batchId:s.batchId||null };
       showTransfer(s.relativePath || s.name,s.size); active.stage='resuming'; renderTransfer();
     }
     els['resume-card'].hidden=true; resumeSession=null;
