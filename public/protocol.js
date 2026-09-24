@@ -8,11 +8,10 @@
     let preferred=weak?64*KiB:throughputBps>=12*MiB?256*KiB:throughputBps>=4*MiB?192*KiB:128*KiB;
     if(!throughputBps&&!weak)preferred=128*KiB;
     const chunkSize=Math.max(16*KiB,Math.min(preferred,chunkCap));
-    let highWater=weak?8*MiB:16*MiB;
-    if(throughputBps>20*MiB&&!weak)highWater=24*MiB;
-    if(throughputBps>50*MiB&&!weak&&rttMs<100)highWater=32*MiB;
-    if(lan&&!weak)highWater=Math.max(highWater,48*MiB);
-    if(rttMs>180)highWater=Math.min(highWater,12*MiB);
+    let highWater=weak?4*MiB:unknownMemory?8*MiB:12*MiB;
+    if(throughputBps>20*MiB&&!weak&&!unknownMemory)highWater=16*MiB;
+    if(lan&&!weak)highWater=unknownMemory?8*MiB:16*MiB;
+    if(rttMs>180)highWater=Math.min(highWater,8*MiB);
     const readAhead=weak?2*MiB:lan?32*MiB:throughputBps>20*MiB?16*MiB:8*MiB;
     const writeBatch=weak?MiB:throughputBps>10*MiB?8*MiB:4*MiB;
     let receiveWindow=weak?8*MiB:unknownMemory?(lan?24*MiB:16*MiB):lan?48*MiB:throughputBps>25*MiB?48*MiB:throughputBps>8*MiB?32*MiB:24*MiB;
