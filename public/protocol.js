@@ -1,13 +1,23 @@
 (() => {
   const KiB=1024, MiB=1024*1024;
-  function chooseTuning({throughputBps=0,rttMs=0,deviceMemory=4,cores=4}={}){
+  function chooseTuning({throughputBps=0,rttMs=0,deviceMemory=4,cores=4,maxMessageSize=0}={}){
     const weak=(deviceMemory&&deviceMemory<=2)||(cores&&cores<=2);
-    const chunkSize=weak?32*KiB:64*KiB;
-    let highWater=weak?2*MiB:8*MiB;
-    if(throughputBps>35*MiB&&!weak&&rttMs<80)highWater=16*MiB;
-    if(throughputBps>80*MiB&&!weak&&rttMs<40)highWater=24*MiB;
-    if(rttMs>180)highWater=Math.min(highWater,4*MiB);
-    return {chunkSize,highWater,lowWater:Math.max(512*KiB,Math.floor(highWater/4))};
+    const negotiated=Number.isFinite(maxMessageSize)&&maxMessageSize>8?maxMessageSize-4:64*KiB;
+    const chunkCap=Math.min(256*KiB,negotiated);
+    let preferred=weak?64*KiB:throughputBps>=20*MiB?192*KiB:throughputBps>=5*MiB?128*KiB:64*KiB;
+    if(!throughputBps&&!weak)preferred=128*KiB;
+    const candidates=[256*KiB,192*KiB,128*KiB,64*KiB,32*KiB];
+    const chunkSize=candidates.find(size=>size<=Math.min(preferred,chunkCap))||32*KiB;
+    let highWater=weak?8*MiB:16*MiB;
+    if(throughputBps>20*MiB&&!weak)highWater=24*MiB;
+    if(throughputBps>50*MiB&&!weak&&rttMs<100)highWater=32*MiB;
+    if(rttMs>180)highWater=Math.min(highWater,12*MiB);
+    const readAhead=weak?2*MiB:throughputBps>20*MiB?8*MiB:4*MiB;
+    const writeBatch=weak?512*KiB:throughputBps>10*MiB?2*MiB:MiB;
+    return {
+      chunkSize,highWater,lowWater:Math.max(MiB,Math.floor(highWater/4)),
+      readAhead,writeBatch,checkpointBytes:64*MiB,uiIntervalMs:100
+    };
   }
   function formatEta(seconds){
     if(!Number.isFinite(seconds)||seconds<0)return '';
@@ -17,14 +27,15 @@
     if(m<60)return s?`${m}m ${s}s`:`${m}m`;
     const h=Math.floor(m/60),rm=m%60;return rm?`${h}h ${rm}m`:`${h}h`;
   }
-  function updateTransferEstimate(previous,{bytes=0,total=0,started=0,label='',now=0,windowMs=8000,minSpanMs=1000}={}){
+  function updateTransferEstimate(previous,{bytes=0,total=0,started=0,label='',now=0,windowMs=8000,minSpanMs=700,sampleIntervalMs=250}={}){
     bytes=Math.max(0,Number(bytes)||0);total=Math.max(bytes,Number(total)||0);now=Number(now)||0;
     const compatible=previous&&previous.label===label&&bytes>=previous.bytes&&Array.isArray(previous.samples)&&now-(previous.sampleAt||now)<=3000;
-    const samples=compatible?previous.samples.filter(sample=>sample&&Number.isFinite(sample.at)&&Number.isFinite(sample.bytes)).map(sample=>({at:sample.at,bytes:sample.bytes})):[];
-    samples.push({at:now,bytes});
+    const samples=compatible?previous.samples.slice(-32):[];
+    const last=samples[samples.length-1];
+    if(!last||now-last.at>=sampleIntervalMs||bytes>=total)samples.push({at:now,bytes});
     const cutoff=now-windowMs;
     while(samples.length>2&&samples[1].at<=cutoff)samples.shift();
-    const first=samples[0],spanMs=Math.max(0,now-first.at),moved=Math.max(0,bytes-first.bytes);
+    const first=samples[0]||{at:now,bytes},spanMs=Math.max(0,now-first.at),moved=Math.max(0,bytes-first.bytes);
     let speed=0,etaSeconds=Infinity;
     if(spanMs>=minSpanMs&&moved>0){
       speed=moved/(spanMs/1000);

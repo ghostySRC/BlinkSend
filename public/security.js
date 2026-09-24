@@ -3,7 +3,7 @@
   const LIMITS=Object.freeze({
     idChars:80, fileNameChars:255, deviceNameChars:64, pathBytes:4096, pathSegments:128, pathSegmentChars:255,
     batchNameChars:255, batchFiles:10000, batchBytes:512*GiB, fileBytes:256*GiB,
-    minChunkBytes:16*KiB, maxChunkBytes:64*KiB, maxChunks:4_194_304,
+    minChunkBytes:16*KiB, maxChunkBytes:256*KiB, maxChunks:4_194_304,
     resumeRanges:128, textBytes:256*KiB, textParts:64, textPartBytes:32*KiB,
     queueFiles:10000, directoryDepth:128, controlJsonBytes:512*KiB
   });
