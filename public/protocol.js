@@ -1,26 +1,39 @@
 (() => {
   const KiB=1024, MiB=1024*1024;
-  function chooseTuning({throughputBps=0,rttMs=0,deviceMemory=0,cores=4,maxMessageSize=0}={}){
+  function chooseTuning({throughputBps=0,rttMs=0,deviceMemory=0,cores=4,maxMessageSize=0,lan=false}={}){
     const weak=(deviceMemory>0&&deviceMemory<=2)||(cores&&cores<=2);
     const unknownMemory=!deviceMemory;
     const negotiated=Number.isFinite(maxMessageSize)&&maxMessageSize>8?maxMessageSize-4:64*KiB;
     const chunkCap=Math.min(256*KiB,negotiated);
-    let preferred=weak?64*KiB:throughputBps>=24*MiB?256*KiB:throughputBps>=6*MiB?192*KiB:128*KiB;
-    if(!throughputBps&&!weak)preferred=128*KiB;
+    let preferred=weak?64*KiB:(lan||throughputBps>=24*MiB)?256*KiB:throughputBps>=6*MiB?192*KiB:128*KiB;
+    if(!throughputBps&&!weak)preferred=lan?256*KiB:128*KiB;
     const chunkSize=Math.max(16*KiB,Math.min(preferred,chunkCap));
     let highWater=weak?8*MiB:16*MiB;
     if(throughputBps>20*MiB&&!weak)highWater=24*MiB;
     if(throughputBps>50*MiB&&!weak&&rttMs<100)highWater=32*MiB;
+    if(lan&&!weak)highWater=Math.max(highWater,48*MiB);
     if(rttMs>180)highWater=Math.min(highWater,12*MiB);
-    const readAhead=weak?2*MiB:throughputBps>20*MiB?16*MiB:8*MiB;
+    const readAhead=weak?2*MiB:lan?32*MiB:throughputBps>20*MiB?16*MiB:8*MiB;
     const writeBatch=weak?MiB:throughputBps>10*MiB?8*MiB:4*MiB;
-    let receiveWindow=weak?8*MiB:unknownMemory?16*MiB:throughputBps>25*MiB?48*MiB:throughputBps>8*MiB?32*MiB:24*MiB;
+    let receiveWindow=weak?8*MiB:unknownMemory?(lan?24*MiB:16*MiB):lan?48*MiB:throughputBps>25*MiB?48*MiB:throughputBps>8*MiB?32*MiB:24*MiB;
     if(rttMs>180)receiveWindow=Math.min(receiveWindow,16*MiB);
     return {
       chunkSize,highWater,lowWater:Math.max(MiB,Math.floor(highWater/4)),
       readAhead,writeBatch,receiveWindow,flowAckBytes:Math.max(MiB,Math.floor(receiveWindow/8)),
       checkpointBytes:128*MiB,uiIntervalMs:100
     };
+  }
+  function adaptReceiveWindow({current=16*MiB,previousBps=0,batchBytes=0,batchMs=0,min=8*MiB,max=64*MiB}={}){
+    current=Math.max(min,Math.min(max,Number(current)||16*MiB));
+    if(!(batchBytes>0)||!(batchMs>0))return {window:current,throughputBps:Math.max(0,Number(previousBps)||0)};
+    const observed=batchBytes/(batchMs/1000);
+    const previous=Math.max(0,Number(previousBps)||0);
+    const throughputBps=previous?previous*.7+observed*.3:observed;
+    const target=Math.max(min,Math.min(max,Math.ceil((throughputBps*1.5)/MiB)*MiB));
+    let window=current;
+    if(target>current)window=Math.min(target,current+8*MiB);
+    else if(target<current*.6)window=Math.max(target,current-4*MiB);
+    return {window,throughputBps};
   }
   function formatEta(seconds){
     if(!Number.isFinite(seconds)||seconds<0)return '';
@@ -67,5 +80,5 @@
     text=String(text||'');if(!text)return [];const enc=new TextEncoder(),out=[];let part='',bytes=0;
     for(const ch of text){const n=enc.encode(ch).byteLength;if(n>maxBytes)throw new Error('character exceeds chunk size');if(bytes+n>maxBytes&&part){out.push(part);part='';bytes=0;}part+=ch;bytes+=n;}if(part)out.push(part);return out;
   }
-  window.BlinkProtocol={chooseTuning,formatEta,updateTransferEstimate,connectionQuality,missingRanges,markChunk,splitUtf8};
+  window.BlinkProtocol={chooseTuning,adaptReceiveWindow,formatEta,updateTransferEstimate,connectionQuality,missingRanges,markChunk,splitUtf8};
 })();
