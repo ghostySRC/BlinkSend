@@ -24,6 +24,9 @@ try{
   browser=await browserType.launch({headless:true});
   const senderContext=await browser.newContext({viewport:{width:1000,height:760}});
   const receiverContext=await browser.newContext({viewport:{width:1000,height:760}});
+  await receiverContext.addInitScript(() => {
+    try { Object.defineProperty(window,'showSaveFilePicker',{value:undefined,configurable:true}); } catch {}
+  });
   const sender=await senderContext.newPage(),receiver=await receiverContext.newPage();
   await Promise.all([sender.goto(base,{waitUntil:'domcontentloaded'}),receiver.goto(base,{waitUntil:'domcontentloaded'})]);
 
