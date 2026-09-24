@@ -29,3 +29,15 @@ BlinkSend is designed for direct, ephemeral transfers between two browsers.
 ## Public deployment
 
 The built-in controls are a baseline, not a complete internet-facing abuse platform. Public operators should additionally use a reverse proxy or edge service for distributed rate limiting, monitor TURN bandwidth, keep dependencies patched, terminate HTTPS correctly, and avoid logging room URLs or TURN credentials. `TRUST_PROXY` must only be enabled when BlinkSend is reachable exclusively through a trusted proxy that overwrites `X-Forwarded-For`; BlinkSend validates the forwarded value as an IP, but direct access to a proxy-trusting origin could still let clients spoof rate-limit/discovery identity. `/metrics` stays disabled unless `METRICS_TOKEN` is configured.
+
+## Untrusted peer resource limits
+
+The receiving browser validates peer-controlled metadata before allocating chunk maps, file arrays, folder structures, or text buffers. Current client-side bounds cover file/batch size, file count, path depth and byte length, identifiers, chunk count, resume-range count, control JSON size, queue length, and clipboard framing. Oversized or contradictory messages are rejected before transfer state is created. These limits live in `public/security.js` so protocol handlers and tests use the same definitions.
+
+## Verification boundary
+
+The data channel may exist before a user confirms the six-digit code, but BlinkSend does not treat that as an authorized transfer session. Before mutual verification, the control policy accepts only device hello, verification confirmation, cancellation, and matching resume metadata needed to preserve an already-existing interrupted transfer. New files, folders, clipboard data, benchmarks, completion messages, retries, and save acknowledgements are ignored until the peer is verified.
+
+Persisted reload-resume metadata is validated again before permissions, writers, chunk maps, or restored batch entries are used. Sender-side restore also compares the current source file size and modification timestamp with the saved session to avoid resuming against a changed file.
+
+Accepted folder batches are treated as a manifest envelope: each batch-tagged file must match the accepted batch ID, cannot push completed bytes beyond the declared total, cannot exceed the declared file count, and `batch-complete` is accepted only when both declared totals have actually been reached.
