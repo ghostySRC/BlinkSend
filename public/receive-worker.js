@@ -30,22 +30,18 @@ async function init(handle,{truncate=false,resumeBytes=0}={}){
   postMessage({type:'ready'});
 }
 
-function writeBatch(entries){
+function writeBatch(offset,buffer){
   if(!initialized||!access)throw new Error('Worker is not initialized');
-  let bytes=0;
-  for(const entry of entries){
-    const view=new Uint8Array(entry.buffer,entry.byteOffset||0,entry.byteLength);
-    const written=access.write(view,{at:entry.offset});
-    if(written!==view.byteLength)throw new Error('Short OPFS write');
-    if(!hashDirty&&entry.offset===nextHashOffset){
-      hasher.update(view);
-      nextHashOffset+=view.byteLength;
-    }else if(entry.offset!==nextHashOffset){
-      hashDirty=true;
-    }
-    bytes+=view.byteLength;
+  const view=new Uint8Array(buffer);
+  const written=access.write(view,{at:offset});
+  if(written!==view.byteLength)throw new Error('Short OPFS write');
+  if(!hashDirty&&offset===nextHashOffset){
+    hasher.update(view);
+    nextHashOffset+=view.byteLength;
+  }else if(offset!==nextHashOffset){
+    hashDirty=true;
   }
-  return bytes;
+  return view.byteLength;
 }
 
 function hashWhole(size){
@@ -70,7 +66,7 @@ onmessage=async event=>{
       return;
     }
     if(msg.type==='write'){
-      const bytes=writeBatch(msg.entries||[]);
+      const bytes=writeBatch(Number(msg.offset)||0,msg.buffer);
       postMessage({type:'written',id:msg.id,bytes});
       return;
     }
