@@ -37,4 +37,4 @@ test('accepted batch manifest cannot be exceeded or completed early',async()=>{
   assert.equal(s.batchCompleteIsConsistent(batch),true);
 });
 
-test('negotiated high-throughput chunks stay bounded',async()=>{const s=await loadSecurity();assert.equal(s.LIMITS.maxChunkBytes,256*1024);assert.equal(s.chunkCount(256*1024,256*1024),1);});
+test('negotiated high-throughput chunks stay bounded',async()=>{const s=await load();assert.equal(s.LIMITS.maxChunkBytes,256*1024);assert.equal(s.chunkCount(256*1024,256*1024),1);});
