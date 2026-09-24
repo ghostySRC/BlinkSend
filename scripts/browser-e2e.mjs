@@ -1,5 +1,8 @@
 import { chromium, firefox, webkit } from 'playwright';
 import { spawn } from 'node:child_process';
+import { mkdtemp, open, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 const browserName=process.env.BROWSER||'chromium';
 const browserType={chromium,firefox,webkit}[browserName];
@@ -18,7 +21,7 @@ async function waitFor(fn,label,timeout=20000){
   while(Date.now()<end){try{if(await fn())return;}catch(e){last=e;}await new Promise(r=>setTimeout(r,100));}
   throw new Error('timeout waiting for '+label+(last?': '+last.message:''));
 }
-let browser;
+let browser,tempDir;
 try{
   await waitServer();
   browser=await browserType.launch({headless:true});
@@ -52,9 +55,11 @@ try{
   await waitFor(()=>sender.locator('#send-text').isEnabled(),'verified send controls',25000);
 
   const perfMiB=browserName==='chromium'?224:64;
+  tempDir=await mkdtemp(join(tmpdir(),'blinksend-e2e-'));
+  const perfPath=join(tempDir,'throughput.bin'),fh=await open(perfPath,'w'),block=Buffer.alloc(1024*1024,0x5a);
+  try{for(let i=0;i<perfMiB;i++)await fh.write(block);}finally{await fh.close();}
   const perfStart=Date.now();
-  const payload=Buffer.alloc(perfMiB*1024*1024,0x5a);
-  await sender.locator('#file').setInputFiles({name:'throughput.bin',mimeType:'application/octet-stream',buffer:payload});
+  await sender.locator('#file').setInputFiles(perfPath);
   await waitFor(()=>receiver.locator('#incoming').isVisible(),'binary transfer prompt',10000);
   await receiver.locator('#accept').click();
   await waitFor(()=>sender.locator('#post-transfer').isVisible(),'binary transfer completion',120000);
@@ -87,6 +92,7 @@ try{
   await Promise.all([senderContext.close(),receiverContext.close()]);
 }finally{
   await browser?.close().catch(()=>{});
+  if(tempDir)await rm(tempDir,{recursive:true,force:true}).catch(()=>{});
   server.kill('SIGTERM');
   await new Promise(r=>setTimeout(r,250));
   if(!server.killed)server.kill('SIGKILL');
