@@ -1,6 +1,12 @@
 name: Refresh README media
 
 on:
+  push:
+    branches:
+      - docs/real-browser-media
+    paths:
+      - scripts/capture-readme-media.mjs
+      - .github/workflows/readme-media.yml
   workflow_dispatch:
 
 permissions:
