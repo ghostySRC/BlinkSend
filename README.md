@@ -35,7 +35,7 @@ The pairing demo shows the current flow: enter the temporary eight-character cod
 
 The transfer demo highlights Direct connection quality, live speed/ETA, whole-transfer progress, and the final SHA-256 verified state. The filenames, speeds, codes, and times shown in the documentation renders are illustrative rather than benchmark claims.
 
-The README media is reproducible: `scripts/generate-readme-media.py` renders these assets, and the dedicated README-media workflow refreshes them when that renderer changes.
+The README media is reproducible: `scripts/generate-readme-media.py` renders these assets, and the dedicated **Refresh README media** workflow can regenerate and commit them on demand after UI changes.
 
 ## Current flow
 
