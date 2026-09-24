@@ -27,7 +27,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add docs/media/desktop.webp docs/media/mobile.webp docs/media/mobile-dark.webp docs/media/pairing.gif docs/media/transfer.gif
+          git add docs/media/desktop.webp docs/media/mobile.webp docs/media/mobile-dark.webp docs/media/pairing.gif docs/media/transfer.gif docs/media/queue.gif
           if git diff --cached --quiet; then
             echo "README media already current."
             exit 0
