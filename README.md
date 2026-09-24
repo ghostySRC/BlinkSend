@@ -1,7 +1,6 @@
 <p align="center"><img src="public/favicon.svg" width="68" alt="BlinkSend logo"></p>
 <h1 align="center">BlinkSend</h1>
-<p align="center"><strong>Move files between computers and phones, straight from the browser.</strong></p>
-<p align="center">No account · No app installation · No file storage on the signaling server</p>
+<p align="center">A self-hosted file transfer tool for two browsers.</p>
 <p align="center"><a href="#quick-start">Quick start</a> · <a href="#see-it-in-action">See it in action</a> · <a href="#deploy-your-own-instance">Self-host</a> · <a href="#how-it-works">How it works</a></p>
 
 <p align="center"><img src="docs/media/desktop.webp" width="900" alt="BlinkSend desktop interface with a QR invite and file transfer panel"></p>

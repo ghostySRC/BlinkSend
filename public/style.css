@@ -1,1 +1,104 @@
-:root{font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#eaf0f3;background:#10151c;font-synthesis:none}*{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(circle at 50% -30%,#284538 0,transparent 42%),#10151c}button,input{font:inherit}button{cursor:pointer}button:focus-visible,input:focus-visible,.drop:focus-within{outline:3px solid #86e9c4;outline-offset:3px}.shell{max-width:1110px;padding:0 28px;margin:auto;min-height:100vh;display:flex;flex-direction:column}.topbar{height:96px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #2a343e}.brand{font-weight:750;font-size:22px;letter-spacing:-.04em;display:flex;align-items:center;gap:11px}.mark{display:grid;place-items:center;width:34px;height:34px;border-radius:10px;background:#85edbf;color:#11221b;font-size:27px;font-weight:500;line-height:1}.pill{border:1px solid #39484c;border-radius:30px;padding:8px 15px;color:#b0c6bd;font-size:13px}.workspace{padding:78px 0 60px;flex:1}.intro{max-width:650px;margin-bottom:43px}.eyebrow,.step{font-size:13px;letter-spacing:.11em;text-transform:uppercase;color:#84ebbc;font-weight:700}.intro h1{font-size:clamp(38px,6vw,68px);letter-spacing:-.067em;line-height:1.06;margin:15px 0 17px}.intro p{color:#aebac2;font-size:18px;line-height:1.55;max-width:580px;margin:0}.columns{display:grid;grid-template-columns:1fr 1fr;gap:18px}.card{border:1px solid #33404a;border-radius:20px;background:#1b232c;padding:30px;min-height:450px}.step{color:#8ddcba;display:flex;gap:13px;align-items:center}.step span{letter-spacing:0;text-transform:none;color:#8d9aa4;font-size:14px;font-weight:500}.card h2{font-size:25px;letter-spacing:-.035em;margin:20px 0 22px}.qr-wrap{background:white;padding:12px;border-radius:14px;width:max-content;line-height:0}.qr-wrap img{width:176px;height:176px}.invite-actions{display:flex;gap:18px;align-items:center;margin-top:23px;flex-wrap:wrap}.button{padding:12px 19px;border-radius:10px;border:1px solid transparent;font-weight:650;font-size:14px;min-height:45px}.primary{background:#8af0be;color:#10241b}.primary:hover{background:#b1ffd5}.secondary{background:#293640;border-color:#3e5058;color:#f0f5f5}.secondary:hover{background:#354550}.text-button{background:none;border:0;color:#a5ecc7;padding:8px 2px;font-size:14px;font-weight:650}.text-button:hover{text-decoration:underline}.hint{color:#8fa0aa;font-size:14px;line-height:1.55;margin:22px 0 0}.connection{display:flex;gap:10px;align-items:center;color:#c5d2d5;font-size:15px;min-height:26px;margin-bottom:22px}.status-dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:#e2b978;flex:none}.status-dot.ready{background:#8af0be}.drop{border:1.5px dashed #506269;border-radius:14px;min-height:183px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;color:#a5b6bd;text-align:center;transition:.15s;background:#202c33;padding:20px;cursor:pointer}.drop:not(.disabled):hover,.drop.drag{border-color:#8af0be;background:#263b39}.drop.disabled{cursor:not-allowed;opacity:.58}.drop input{position:absolute;width:1px;height:1px;opacity:0}.drop strong{color:#edf8f2;font-size:17px}.drop span:last-child{font-size:14px}.upload-icon{width:38px;height:38px;border-radius:10px;border:1px solid #536966;display:grid;place-items:center;color:#91e9bd;font-size:23px;margin-bottom:7px}.transfer-info{margin-top:18px}.file-row{display:flex;justify-content:space-between;align-items:center;gap:12px;font-size:14px}.file-row span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.file-row.muted{color:#93a5ad}.transfer-info progress{width:100%;height:8px;margin:12px 0;accent-color:#8af0be}.queue-status{color:#9bb3ad;font-size:14px;margin:8px 0 0}.notice{min-height:24px;color:#f2ca8c;margin:20px 0 0;font-size:14px}footer{border-top:1px solid #2a343e;color:#7e919a;font-size:13px;padding:26px 0 32px}.modal-backdrop{position:fixed;inset:0;background:#070b10c9;display:grid;place-items:center;padding:20px;z-index:10}.modal-backdrop[hidden],[hidden]{display:none!important}.modal{width:min(100%,440px);border:1px solid #4c5a60;border-radius:18px;background:#202a32;padding:28px;box-shadow:0 24px 100px #0008}.modal h2{font-size:25px;margin:15px 0}.modal p{color:#b9c9ce;overflow-wrap:anywhere;line-height:1.5}.modal .hint{font-size:13px}.modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:25px}@media(max-width:750px){.shell{padding:0 19px}.topbar{height:73px}.pill{display:none}.workspace{padding:46px 0}.intro{margin-bottom:28px}.intro p{font-size:16px}.columns{grid-template-columns:1fr}.card{padding:24px;min-height:0}.invite{min-height:395px}.transfer{min-height:390px}footer{line-height:1.5}}@media(max-width:400px){.invite-actions{gap:10px}.qr-wrap img{width:150px;height:150px}}
+:root {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
+  color: #20292f;
+  background: #f6f7f8;
+  font-synthesis: none;
+}
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100vh; }
+button, input { font: inherit; }
+button { cursor: pointer; }
+button:focus-visible, a:focus-visible, input:focus-visible, .drop:focus-within {
+  outline: 2px solid #206a59;
+  outline-offset: 3px;
+}
+[hidden] { display: none !important; }
+.shell {
+  width: min(100% - 48px, 1040px);
+  min-height: 100vh;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+}
+.topbar {
+  height: 74px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid #dfe3e6;
+}
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 19px; letter-spacing: -.02em; }
+.mark {
+  display: grid; place-items: center;
+  width: 29px; height: 29px;
+  border-radius: 6px;
+  background: #202e35; color: white;
+  font-size: 24px; font-weight: 400; line-height: 1;
+}
+.top-link { color: #56636a; text-decoration: none; font-size: 14px; }
+.top-link:hover { color: #20292f; text-decoration: underline; }
+.workspace { flex: 1; padding: 64px 0 56px; }
+.intro { margin-bottom: 35px; }
+.intro h1 { font-size: clamp(30px, 4vw, 42px); line-height: 1.16; letter-spacing: -.04em; font-weight: 700; margin: 0 0 9px; }
+.intro p { color: #66737b; font-size: 16px; line-height: 1.5; margin: 0; }
+.columns { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: start; }
+.card { background: white; border: 1px solid #dce2e5; border-radius: 12px; padding: 28px; min-height: 440px; }
+.section-heading { min-height: 86px; }
+.section-heading h2 { font-size: 21px; line-height: 1.25; letter-spacing: -.025em; margin: 0 0 7px; }
+.section-heading p { color: #647178; font-size: 14px; line-height: 1.5; margin: 0; }
+.qr-wrap { display: inline-flex; padding: 7px; border: 1px solid #e5e9eb; border-radius: 8px; background: white; }
+.qr-wrap img { width: 176px; height: 176px; display: block; }
+.invite-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 16px; margin-top: 20px; }
+.button { min-height: 42px; border-radius: 7px; border: 1px solid transparent; padding: 10px 15px; font-size: 14px; font-weight: 600; }
+.button.primary { background: #206a59; color: white; }
+.button.primary:hover { background: #175645; }
+.button.secondary { color: #29353a; background: #fff; border-color: #cbd4d8; }
+.button.secondary:hover { background: #f5f7f8; }
+.text-button { background: none; border: 0; padding: 7px 2px; color: #206a59; font-size: 14px; font-weight: 600; }
+.text-button:hover { text-decoration: underline; }
+.hint { color: #718087; font-size: 13px; line-height: 1.5; margin: 19px 0 0; }
+.connection { display: flex; align-items: center; gap: 9px; min-height: 25px; color: #4c5b62; font-size: 14px; margin: 0 0 18px; }
+.status-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: #c69340; }
+.status-dot.ready { background: #298768; }
+.drop {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 5px; min-height: 196px; padding: 20px;
+  border: 1px dashed #b5c1c5; border-radius: 9px;
+  background: #fbfcfc; color: #718087; text-align: center;
+  transition: background .15s, border-color .15s; cursor: pointer;
+}
+.drop:not(.disabled):hover, .drop.drag { background: #f4f9f7; border-color: #438e75; }
+.drop.disabled { cursor: not-allowed; opacity: .62; }
+.drop input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.drop strong { color: #29353a; font-size: 16px; }
+.drop span:last-child { font-size: 14px; }
+.upload-icon { font-size: 25px; line-height: 1; color: #527668; margin-bottom: 9px; }
+.transfer-info { margin-top: 19px; }
+.file-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; font-size: 14px; }
+.file-row span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-row.muted { color: #69767d; }
+.transfer-info progress { width: 100%; height: 8px; margin: 11px 0; accent-color: #206a59; }
+.queue-status { color: #69767d; font-size: 13px; margin: 8px 0 0; }
+.notice { min-height: 24px; color: #795328; margin: 18px 0 0; font-size: 14px; }
+footer { border-top: 1px solid #dfe3e6; padding: 23px 0 27px; color: #89949a; font-size: 13px; }
+.modal-backdrop { position: fixed; inset: 0; z-index: 10; display: grid; place-items: center; padding: 20px; background: #17232bbb; }
+.modal { width: min(100%, 420px); padding: 26px; background: white; border: 1px solid #dce2e5; border-radius: 11px; box-shadow: 0 20px 65px #17232b38; }
+.modal h2 { font-size: 21px; letter-spacing: -.025em; margin: 0 0 18px; }
+.modal p { color: #4d5a60; line-height: 1.5; overflow-wrap: anywhere; }
+.modal .hint { font-size: 13px; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 25px; }
+@media (max-width: 760px) {
+  .shell { width: min(100% - 32px, 560px); }
+  .topbar { height: 64px; }
+  .workspace { padding: 39px 0 45px; }
+  .intro { margin-bottom: 27px; }
+  .columns { grid-template-columns: 1fr; gap: 14px; }
+  .card { min-height: auto; padding: 23px; }
+  .section-heading { min-height: 0; margin-bottom: 24px; }
+  .invite .hint { margin-top: 22px; }
+  .transfer .hint { margin-top: 20px; }
+}
+@media (max-width: 390px) {
+  .invite-actions { gap: 10px; }
+  .qr-wrap img { width: 160px; height: 160px; }
+}

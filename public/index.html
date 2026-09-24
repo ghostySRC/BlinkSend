@@ -3,39 +3,37 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#10151c">
+  <meta name="theme-color" content="#f6f7f8">
   <meta name="description" content="Send files directly between phones and computers. No account needed.">
-  <title>BlinkSend — Send files directly</title>
+  <title>BlinkSend — File transfer</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/style.css">
   <script src="/app.js" defer></script>
 </head>
 <body>
   <main class="shell">
-    <header class="topbar"><div class="brand"><span class="mark" aria-hidden="true">↗</span> BlinkSend</div><span class="pill">Direct file sharing</span></header>
+    <header class="topbar"><div class="brand"><span class="mark" aria-hidden="true">↗</span> BlinkSend</div><a class="top-link" href="https://github.com/ghostySRC/BlinkSend">GitHub</a></header>
     <section class="workspace" aria-label="File transfer">
-      <div class="intro"><span class="eyebrow">A room for two devices</span><h1>Move files in a blink.</h1><p>Open this link on another device, then send a file in either direction. Keep both tabs open until the transfer finishes.</p></div>
+      <div class="intro"><h1>Send files</h1><p>Connect another device to send or receive files.</p></div>
       <div class="columns">
         <section class="card invite" aria-labelledby="invite-title">
-          <div class="step">01 <span>Connect</span></div>
-          <h2 id="invite-title">Join on your other device</h2>
+          <div class="section-heading"><h2 id="invite-title">Connect a device</h2><p>Scan the code or open the invite link on your other device.</p></div>
           <div class="qr-wrap"><img id="qr" width="186" height="186" alt="QR code for this room"></div>
           <div class="invite-actions"><button id="copy" type="button" class="button secondary">Copy invite link</button><button id="new-room" type="button" class="text-button">New room</button></div>
-          <p class="hint">Anyone with this link can join this room. Share it only with your intended recipient.</p>
+          <p class="hint">Anyone with the link can join this room. Share it privately.</p>
         </section>
         <section class="card transfer" aria-labelledby="transfer-title">
-          <div class="step">02 <span>Transfer</span></div>
-          <h2 id="transfer-title">Send a file</h2>
+          <div class="section-heading"><h2 id="transfer-title">Files</h2><p>Send files in either direction once connected.</p></div>
           <div class="connection"><span id="status-dot" class="status-dot" aria-hidden="true"></span><span id="status" role="status">Connecting to room…</span></div>
           <label class="drop" id="drop"><input id="file" type="file" multiple disabled><span class="upload-icon" aria-hidden="true">↑</span><strong>Choose files</strong><span>or drop them here on a computer</span></label>
           <div id="transfer-info" class="transfer-info" hidden><div class="file-row"><span id="file-name"></span><span id="file-size"></span></div><progress id="progress" max="100" value="0" aria-label="Transfer progress"></progress><div class="file-row muted"><span id="progress-text">Preparing…</span><button id="cancel" type="button" class="text-button">Cancel</button></div><p id="queue-status" class="queue-status" role="status" hidden></p></div>
-          <p class="hint">Files go directly between devices when a connection is available. Nothing is stored by BlinkSend.</p>
+          <p class="hint">Keep both tabs open until the transfer finishes.</p>
         </section>
       </div>
       <p id="notice" class="notice" role="status" aria-live="polite"></p>
     </section>
-    <footer>Browser to browser · Encrypted in transit · No account</footer>
+    <footer>BlinkSend · Two devices per room</footer>
   </main>
-  <div id="incoming" class="modal-backdrop" hidden><div class="modal" role="dialog" aria-modal="true" aria-labelledby="incoming-title"><span class="eyebrow">Incoming file</span><h2 id="incoming-title">Accept this transfer?</h2><p id="incoming-detail"></p><p id="save-note" class="hint"></p><div class="modal-actions"><button id="decline" type="button" class="button secondary">Decline</button><button id="accept" type="button" class="button primary">Save file</button></div></div></div>
+  <div id="incoming" class="modal-backdrop" hidden><div class="modal" role="dialog" aria-modal="true" aria-labelledby="incoming-title"><h2 id="incoming-title">Incoming file</h2><p id="incoming-detail"></p><p id="save-note" class="hint"></p><div class="modal-actions"><button id="decline" type="button" class="button secondary">Decline</button><button id="accept" type="button" class="button primary">Save file</button></div></div></div>
 </body>
 </html>
