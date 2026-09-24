@@ -446,6 +446,66 @@
       terminate(){if(closed)return;closed=true;worker.terminate();failAll(new Error('OPFS worker terminated'));}
     };
   }
+  function createSenderHashTask(file){
+    if(!window.Worker)return null;
+    const worker=new Worker('/hash-worker.js');
+    const id=crypto.randomUUID();
+    let settled=false,rejectDone;
+    const promise=new Promise((resolve,reject)=>{
+      rejectDone=reject;
+      worker.onmessage=event=>{
+        const msg=event.data||{};
+        if(msg.id!==id)return;
+        if(msg.type==='done'){
+          if(settled)return;settled=true;resolve(msg.sha256);worker.terminate();
+        }else if(msg.type==='error'){
+          if(settled)return;settled=true;reject(new Error(msg.message||'Hash worker failed'));worker.terminate();
+        }
+      };
+      worker.onerror=event=>{if(settled)return;settled=true;reject(new Error(event.message||'Hash worker failed'));worker.terminate();};
+      worker.postMessage({type:'hash',id,file,chunkBytes:16*1024*1024});
+    });
+    return {
+      promise,
+      terminate(){
+        if(settled)return;settled=true;
+        try{worker.postMessage({type:'cancel',id});}catch{}
+        worker.terminate();
+        rejectDone?.(new Error('Hash cancelled'));
+      }
+    };
+  }
+  function ensureSenderHash(state=active){
+    if(!state||state.direction!=='send'||!state.file)return Promise.reject(new Error('No sender file'));
+    if(state.fullHash)return Promise.resolve(state.fullHash);
+    if(!state.hashPromise){
+      const task=createSenderHashTask(state.file);
+      if(task){
+        state.hashTask=task;
+        state.hashPromise=task.promise.then(hash=>{state.fullHash=hash;return hash;}).finally(()=>{if(state.hashTask===task)state.hashTask=null;});
+        state.hashPromise.catch(()=>{});
+      }else{
+        state.hashPromise=BlinkTransfer.hashWholeFile(state.file,state.chunkSize||defaultChunkSize).then(hash=>{state.fullHash=hash;return hash;});
+      }
+    }
+    return state.hashPromise;
+  }
+  function isLikelyLan(){
+    return !connectionMetrics.relayed&&connectionMetrics.rttMs>0&&connectionMetrics.rttMs<25&&
+      connectionMetrics.localType==='host'&&connectionMetrics.remoteType==='host';
+  }
+  function retuneConnection(){
+    tuning=BlinkProtocol.chooseTuning({
+      throughputBps:connectionMetrics.throughputBps,
+      rttMs:connectionMetrics.rttMs,
+      deviceMemory:navigator.deviceMemory||0,
+      cores:navigator.hardwareConcurrency||4,
+      maxMessageSize:pc?.sctp?.maxMessageSize||0,
+      lan:isLikelyLan()
+    });
+    if(channel?.readyState==='open')channel.bufferedAmountLowThreshold=tuning.lowWater;
+    return tuning;
+  }
   const format = bytes => bytes < 1024 ? `${bytes} B` : bytes < 1048576 ? `${(bytes / 1024).toFixed(1)} KB` : bytes < 1073741824 ? `${(bytes / 1048576).toFixed(1)} MB` : `${(bytes / 1073741824).toFixed(2)} GB`;
   let socket, pc, channel, pending, active, incomingQueue = Promise.resolve(), signalQueue = Promise.resolve(), connectTimer, iceToken = '', isOfferer=false, iceRestartTimer;
   let readyLabel = 'ready', peerVerified = false, localVerified = false, remoteVerified = false, verificationCode = '', calibrating=false;
