@@ -12,7 +12,7 @@ test('adaptive tuning stays browser-safe and scales buffer targets',async()=>{
   const weak=p.chooseTuning({throughputBps:100e6,rttMs:20,deviceMemory:2,cores:2,maxMessageSize:262144});
   assert.equal(weak.chunkSize,65536);assert.ok(weak.highWater>=4*1024*1024);
   const fast=p.chooseTuning({throughputBps:100*1024*1024,rttMs:20,deviceMemory:8,cores:8,maxMessageSize:262144});
-  assert.equal(fast.chunkSize,262140);assert.ok(fast.highWater>=12*1024*1024);assert.ok(fast.receiveWindow>=32*1024*1024);
+  assert.equal(fast.chunkSize,262140);assert.ok(fast.highWater>=12*1024*1024);assert.equal(fast.receiveWindow,32*1024*1024);
   const capped=p.chooseTuning({throughputBps:100*1024*1024,rttMs:20,deviceMemory:8,cores:8,maxMessageSize:65536});
   assert.ok(capped.chunkSize+4<=65536);
 });
@@ -99,4 +99,14 @@ test('LAN mode does not overfill the browser RTCDataChannel queue',async()=>{
   assert.ok(safariLike.highWater<=8*1024*1024);
   assert.ok(desktop.highWater<=16*1024*1024);
   assert.ok(safariLike.receiveWindow>safariLike.highWater);
+});
+
+
+test('receiver credit window is capped at 32 MiB even on very fast LANs',async()=>{
+  const p=await loadProtocol();
+  const t=p.chooseTuning({throughputBps:200*1024*1024,rttMs:1,deviceMemory:16,cores:16,maxMessageSize:262144,lan:true});
+  assert.equal(t.receiveWindow,32*1024*1024);
+  let adapted={window:t.receiveWindow,throughputBps:0};
+  for(let i=0;i<10;i++)adapted=p.adaptReceiveWindow({current:adapted.window,previousBps:adapted.throughputBps,batchBytes:8*1024*1024,batchMs:20,max:32*1024*1024});
+  assert.equal(adapted.window,32*1024*1024);
 });
