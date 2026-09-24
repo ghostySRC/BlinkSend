@@ -36,4 +36,6 @@ jobs:
             exit 0
           fi
           git commit -m "Refresh README visuals for v0.2.0"
-          git push origin HEAD:${GITHUB_REF_NAME}
+          git fetch origin "${GITHUB_REF_NAME}"
+          git rebase "origin/${GITHUB_REF_NAME}"
+          git push origin HEAD:"${GITHUB_REF_NAME}"
