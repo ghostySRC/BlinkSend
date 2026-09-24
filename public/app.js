@@ -1,6 +1,6 @@
 (() => {
   const $ = id => document.getElementById(id);
-  const els = Object.fromEntries(['settings-toggle','settings-panel','settings-close','device-name','notify-complete','history-list','clear-history','mode-picker','mode-send','mode-receive','receive-join','join-link','join-room','join-back','resume-card','resume-detail','resume-transfer','discard-resume','transfer-workspace','invite-card','transfer-card','send-controls','receive-wait','qr','copy','new-room','status','status-dot','peer-name','connection-quality','verify-peer','verify-code','verify-match','file','folder','choose-folder','share-text','send-text','received-text','received-content','received-link','copy-received','share-received','share-last-file','drop','transfer-info','file-name','file-size','progress','progress-text','cancel','queue-status','notice','incoming','incoming-title','incoming-detail','save-note','accept','decline'].map(id => [id, $(id)]));
+  const els = Object.fromEntries(['settings-toggle','settings-panel','settings-close','device-name','notify-complete','history-list','clear-history','mode-picker','mode-send','mode-receive','receive-join','join-link','join-room','join-back','resume-card','resume-detail','resume-transfer','discard-resume','transfer-workspace','invite-card','transfer-card','send-controls','receive-wait','qr','copy','new-room','status','status-dot','peer-name','connection-quality','verify-peer','verify-code','verify-match','file','folder','choose-folder','share-text','send-text','received-text','received-content','received-link','copy-received','share-received','share-last-file','drop','transfer-info','batch-summary','file-name','file-size','progress','progress-text','cancel','queue-status','notice','incoming','incoming-title','incoming-detail','save-note','accept','decline'].map(id => [id, $(id)]));
   const translations = {
   "en": {
     "language": "Language",
@@ -95,7 +95,16 @@
     "queue": "File %current% of %total% · %remaining% remaining",
     "sending": "Sending",
     "receiving": "Receiving",
-    "speed": "%label% %bytes% of %total% · %speed%/s",
+    "speed": "%label% %bytes% of %total% · %speed%/s%eta%",
+    "etaSuffix": " · ~%eta% left",
+    "qualityExcellent": "Excellent",
+    "qualityGood": "Good",
+    "qualityFair": "Fair",
+    "qualityPoor": "Poor",
+    "qualityUnknown": "Measuring",
+    "pathDirect": "Direct",
+    "pathRelay": "Relay",
+    "batchProgress": "Batch %bytes% of %total% · file %current%/%count%",
     "connectionLost": "Connection lost. Transfer stopped.",
     "waitingAcceptance": "Waiting for acceptance…",
     "finishing": "Finishing on other device…",
@@ -213,7 +222,16 @@
     "queue": "Fil %current% av %total% · %remaining% återstår",
     "sending": "Skickar",
     "receiving": "Tar emot",
-    "speed": "%label% %bytes% av %total% · %speed%/s",
+    "speed": "%label% %bytes% av %total% · %speed%/s%eta%",
+    "etaSuffix": " · ~%eta% kvar",
+    "qualityExcellent": "Utmärkt",
+    "qualityGood": "Bra",
+    "qualityFair": "Okej",
+    "qualityPoor": "Svag",
+    "qualityUnknown": "Mäter",
+    "pathDirect": "Direkt",
+    "pathRelay": "Relä",
+    "batchProgress": "Batch %bytes% av %total% · fil %current%/%count%",
     "connectionLost": "Anslutningen bröts. Överföringen stoppades.",
     "waitingAcceptance": "Väntar på godkännande…",
     "finishing": "Slutför på den andra enheten…",
@@ -281,13 +299,23 @@
     els['queue-status'].textContent = tr('queue', { current: batchDone + 1, total: batchTotal, remaining: outgoing.length });
     els.cancel.textContent = tr(batchTotal > 1 && active?.direction === 'send' ? 'cancelBatch' : 'cancel');
     if (progressState) {
-      const { bytes, total, started, label } = progressState;
-      const speed = bytes / Math.max(1, (Date.now() - started) / 1000);
-      els['progress-text'].textContent = tr('speed', { label: tr(label), bytes: format(bytes), total: format(total), speed: format(speed) });
+      const { bytes, total, label, speed=0 } = progressState;
+      const etaSeconds=speed>0?(total-bytes)/speed:Infinity;
+      const eta=Number.isFinite(etaSeconds)&&etaSeconds>=1?tr('etaSuffix',{eta:BlinkProtocol.formatEta(etaSeconds)}):'';
+      els['progress-text'].textContent = tr('speed', { label: tr(label), bytes: format(bytes), total: format(total), speed: format(speed), eta });
     } else els['progress-text'].textContent = tr(active?.stage || 'starting');
+    const batch=active?.direction==='send'?outgoingBatch:incomingBatch;
+    if(batch&&batch.totalSize){
+      const currentBytes=(batch.completedBytes||0)+(progressState?.bytes||0);
+      els['batch-summary'].hidden=false;
+      els['batch-summary'].textContent=tr('batchProgress',{bytes:format(Math.min(batch.totalSize,currentBytes)),total:format(batch.totalSize),current:(batch.completedCount||0)+1,count:batch.count||batchTotal||1});
+    } else els['batch-summary'].hidden=true;
   }
-  const chunkSize = 64 * 1024;
+  const defaultChunkSize = 64 * 1024;
   const maxMemoryFile = 200 * 1024 * 1024;
+  let tuning=BlinkProtocol.chooseTuning({deviceMemory:navigator.deviceMemory||4,cores:navigator.hardwareConcurrency||4});
+  let connectionMetrics={rttMs:0,throughputBps:0,relayed:false};
+  let benchmarkState=null, benchmarkIncoming='';
   const maxTextBytes = 256 * 1024;
   const supportsOpfs = !!navigator.storage?.getDirectory;
   const format = bytes => bytes < 1024 ? `${bytes} B` : bytes < 1048576 ? `${(bytes / 1024).toFixed(1)} KB` : bytes < 1073741824 ? `${(bytes / 1048576).toFixed(1)} MB` : `${(bytes / 1073741824).toFixed(2)} GB`;
@@ -387,8 +415,10 @@
         if (!pair && item.type === 'candidate-pair' && item.nominated && item.state === 'succeeded') pair = item;
       }
       const local = stats.get(pair?.localCandidateId), remote = stats.get(pair?.remoteCandidateId);
-      const relayed = local?.candidateType === 'relay' || remote?.candidateType === 'relay';
-      readyLabel = !pair ? 'ready' : relayed ? 'readyRelay' : 'readyDirect';
+      const relayed=local?.candidateType==='relay'||remote?.candidateType==='relay';
+      const rttSec=pair?.currentRoundTripTime||(pair?.totalRoundTripTime&&pair?.responsesReceived?pair.totalRoundTripTime/pair.responsesReceived:0);
+      connectionMetrics.relayed=!!relayed;connectionMetrics.rttMs=Math.round((rttSec||0)*1000);
+      readyLabel=!pair?'ready':relayed?'readyRelay':'readyDirect';updateQualityLabel();
       await showVerificationCode();
     } catch { if (pc === current && channel?.readyState === 'open') await showVerificationCode(); }
   }
@@ -415,7 +445,7 @@
   function setupChannel(ch) {
     channel = ch;
     ch.binaryType = 'arraybuffer';
-    ch.bufferedAmountLowThreshold = 2 * 1024 * 1024;
+    ch.bufferedAmountLowThreshold = tuning.lowWater;
     ch.onopen = () => {
       clearTimeout(connectTimer); connectionPath(); notice();
       ch.send(JSON.stringify({type:'hello',name:deviceName}));
@@ -457,9 +487,15 @@
     els['queue-status'].hidden = batchTotal < 2 || active?.direction !== 'send';
     renderTransfer();
   }
-  function progress(bytes, total, started, label) {
-    els.progress.value = total ? Math.min(100, bytes / total * 100) : 100;
-    progressState = { bytes, total, started, label };
+  function progress(bytes,total,started,label){
+    els.progress.value=total?Math.min(100,bytes/total*100):100;
+    const now=performance.now(),prev=progressState;
+    let speed=prev?.speed||0;
+    if(prev&&prev.label===label&&bytes>=prev.bytes){
+      const dt=(now-(prev.sampleAt||now))/1000,delta=bytes-prev.bytes;
+      if(dt>.08&&delta>=0){const instant=delta/dt;speed=speed?speed*.72+instant*.28:instant;}
+    } else if(bytes>0) speed=bytes/Math.max(.25,(Date.now()-started)/1000);
+    progressState={bytes,total,started,label,speed,sampleAt:now};
     renderTransfer();
   }
   function stopTransfer(message, notify = true, preserveQueue = false, vars = {}) {
@@ -481,11 +517,11 @@
   async function persistSendSession(entry) {
     if (!window.BlinkStore || !entry?.handle || !room || !active) return;
     const batchEntries = outgoingBatch?.entries?.filter(x => x.handle).map(x => ({ handle:x.handle, name:x.file?.name || x.name, size:x.file?.size ?? x.size, relativePath:x.relativePath })) || null;
-    try { await BlinkStore.put({ id:sessionKey(), room, role:'send', transferId:active.id, handle:entry.handle, name:active.file.name, size:active.file.size, relativePath:active.relativePath, batchId:outgoingBatch?.id || null, batchName:outgoingBatch?.name || null, batchEntries, batchDone }); } catch {}
+    try { await BlinkStore.put({ id:sessionKey(), room, role:'send', transferId:active.id, handle:entry.handle, name:active.file.name, size:active.file.size, relativePath:active.relativePath, chunkSize:active.chunkSize, batchId:outgoingBatch?.id || null, batchName:outgoingBatch?.name || null, batchEntries, batchDone }); } catch {}
   }
   async function persistReceiveSession() {
     if (!window.BlinkStore || !active?.persistentHandle || !room) return;
-    try { await BlinkStore.put({ id:sessionKey(), room, role:'receive', transferId:active.id, handle:active.persistentHandle, name:active.name, size:active.size, relativePath:active.relativePath, received:active.committedBytes || 0, nextChunk:Math.floor((active.committedBytes || 0)/chunkSize), batchId:incomingBatch?.id || null, batchName:incomingBatch?.name || null, batchRootHandle:incomingBatch?.rootHandle || null, opfs:!!active.opfs, opfsTempName:active.opfs?.tempName || null }); } catch {}
+    try { await BlinkStore.put({ id:sessionKey(), room, role:'receive', transferId:active.id, handle:active.persistentHandle, name:active.name, size:active.size, relativePath:active.relativePath, chunkSize:active.chunkSize, received:active.committedBytes || 0, nextChunk:Math.floor((active.committedBytes || 0)/(active.chunkSize||defaultChunkSize)), batchId:incomingBatch?.id || null, batchName:incomingBatch?.name || null, batchRootHandle:incomingBatch?.rootHandle || null, opfs:!!active.opfs, opfsTempName:active.opfs?.tempName || null }); } catch {}
   }
   async function persistBatchContext() {
     if (!window.BlinkStore || !room || !incomingBatch?.rootHandle) return;
@@ -511,35 +547,65 @@
     }
     return entries;
   }
-  async function hashPrefix(file, bytes) {
+  async function hashPrefix(file, bytes, size=defaultChunkSize) {
     const hasher = new BlinkSHA256(); let offset = 0;
-    while (offset < bytes) { const part = await file.slice(offset, Math.min(bytes, offset + chunkSize)).arrayBuffer(); hasher.update(part); offset += part.byteLength; }
+    while (offset < bytes) { const part = await file.slice(offset, Math.min(bytes, offset + size)).arrayBuffer(); hasher.update(part); offset += part.byteLength; }
     return hasher;
   }
   function packChunk(seq, part) {
     const payload = new Uint8Array(part), packet = new Uint8Array(payload.length + 4);
     new DataView(packet.buffer).setUint32(0, seq); packet.set(payload, 4); return packet.buffer;
   }
+  function updateQualityLabel(){
+    const q=BlinkProtocol.connectionQuality(connectionMetrics);
+    const key=q==='excellent'?'qualityExcellent':q==='good'?'qualityGood':q==='fair'?'qualityFair':q==='poor'?'qualityPoor':'qualityUnknown';
+    const path=connectionMetrics.relayed?tr('pathRelay'):tr('pathDirect');
+    const measured=connectionMetrics.throughputBps?' · '+format(connectionMetrics.throughputBps)+'/s':'';
+    els['connection-quality'].textContent=path+' · '+tr(key)+measured;
+  }
+  async function runBenchmark(){
+    if(channel?.readyState!=='open'||active||benchmarkState)return;
+    const id=crypto.randomUUID(),bytes=512*1024;
+    benchmarkState={id,bytes,started:0,resolve:null};
+    const done=new Promise(resolve=>benchmarkState.resolve=resolve);
+    channel.send(JSON.stringify({type:'benchmark-start',id,bytes}));
+    const timeout=setTimeout(()=>benchmarkState?.resolve?.(0),3500);
+    const throughput=await done;clearTimeout(timeout);
+    if(throughput>0)connectionMetrics.throughputBps=throughput;
+    tuning=BlinkProtocol.chooseTuning({throughputBps:connectionMetrics.throughputBps,rttMs:connectionMetrics.rttMs,deviceMemory:navigator.deviceMemory||4,cores:navigator.hardwareConcurrency||4});
+    if(channel?.readyState==='open')channel.bufferedAmountLowThreshold=tuning.lowWater;
+    benchmarkState=null;updateQualityLabel();
+  }
+  async function sendBenchmarkPayload(){
+    if(!benchmarkState||channel?.readyState!=='open')return;
+    benchmarkState.started=performance.now();
+    const block=new Uint8Array(64*1024),count=Math.ceil(benchmarkState.bytes/block.byteLength);
+    for(let i=0;i<count;i++){
+      while(channel.bufferedAmount>4*1024*1024)await new Promise(r=>channel.addEventListener('bufferedamountlow',r,{once:true}));
+      channel.send(block);
+    }
+    channel.send(JSON.stringify({type:'benchmark-end',id:benchmarkState.id,bytes:benchmarkState.bytes}));
+  }
   function maybeFinishVerification() {
     if (!localVerified || !remoteVerified || peerVerified) return;
-    peerVerified = true; els['verify-peer'].hidden = true; status('verified', true);
+    peerVerified = true; els['verify-peer'].hidden = true; status('verified', true); runBenchmark();
     if (active?.direction === 'receive' && active.paused && channel?.readyState === 'open') channel.send(JSON.stringify({ type: 'resume', id: active.id, nextChunk: active.nextChunk || 0, size: active.size }));
     if (active?.direction === 'send' && Number.isSafeInteger(active.pendingResume)) { const next = active.pendingResume; delete active.pendingResume; resumeOutgoing(next); }
   }
   async function resumeOutgoing(nextChunk) {
     if (!active || active.direction !== 'send' || !Number.isSafeInteger(nextChunk) || nextChunk < 0) return;
-    const offset = Math.min(active.file.size, nextChunk * chunkSize); active.sent = offset; active.nextChunk = nextChunk;
-    active.hasher = await hashPrefix(active.file, offset); active.paused = false; active.stage = 'resuming';
+    const size=active.chunkSize||defaultChunkSize; const offset = Math.min(active.file.size, nextChunk * size); active.sent = offset; active.nextChunk = nextChunk;
+    active.hasher = await hashPrefix(active.file, offset, size); active.paused = false; active.stage = 'resuming';
     progress(offset, active.file.size, active.started, 'sending'); pump(active.id);
   }
   async function sendFile(entry) {
     if (!entry || channel?.readyState !== 'open' || active || pending) return;
     const file = entry.file || entry;
     const relativePath = entry.relativePath || file.webkitRelativePath || '';
-    const id = entry.transferId || crypto.randomUUID(); active = { id, direction: 'send', file, sourceEntry:entry, relativePath, batchId:outgoingBatch?.id || entry.batchId || null, sent: 0, nextChunk: 0, hasher: new BlinkSHA256(), started: Date.now(), accepted: false, paused: false };
+    const id = entry.transferId || crypto.randomUUID(); active = { id, direction: 'send', file, sourceEntry:entry, relativePath, batchId:outgoingBatch?.id || entry.batchId || null, chunkSize:tuning.chunkSize, highWater:tuning.highWater, sent: 0, nextChunk: 0, hasher: new BlinkSHA256(), started: Date.now(), accepted: false, paused: false };
     showTransfer(relativePath || file.name, file.size);
     await persistSendSession(entry);
-    channel.send(JSON.stringify({ type: 'request', id, name: file.name, relativePath, size: file.size, batchId:active.batchId }));
+    channel.send(JSON.stringify({ type: 'request', id, name: file.name, relativePath, size: file.size, batchId:active.batchId, chunkSize:active.chunkSize }));
     active.stage = 'waitingAcceptance'; renderTransfer();
   }
   function sendNext() {
@@ -549,6 +615,8 @@
     else { batchTotal = 0; batchDone = 0; }
   }
   function finishOutgoing(message, vars = {}) {
+    const finishedSize=active?.file?.size||0;
+    if(outgoingBatch){outgoingBatch.completedBytes=(outgoingBatch.completedBytes||0)+finishedSize;outgoingBatch.completedCount=(outgoingBatch.completedCount||0)+1;}
     stopTransfer(message, false, true, vars);
     batchDone++;
     if (outgoing.length) setTimeout(sendNext, 0);
@@ -562,8 +630,8 @@
     if (isFolder && outgoing.length) {
       const id = crypto.randomUUID();
       const name = folderName || outgoing[0].relativePath.split('/')[0] || 'Folder';
-      outgoingBatch = { id, name, entries:[...outgoing] };
       const totalSize = outgoing.reduce((sum,x)=>sum+x.file.size,0);
+      outgoingBatch = { id, name, entries:[...outgoing], totalSize, count:outgoing.length, completedBytes:0, completedCount:0 };
       channel.send(JSON.stringify({ type:'batch-request', id, name, count:outgoing.length, totalSize }));
     } else sendNext();
   }
@@ -574,8 +642,8 @@
       if (!file || active.id !== id) return;
       while (active?.id === id && !active.paused && active.sent < file.size) {
         if (channel.readyState !== 'open') throw new Error('Connection closed');
-        if (channel.bufferedAmount > 8 * 1024 * 1024) { await new Promise(resolve => { channel.addEventListener('bufferedamountlow', resolve, { once: true }); }); continue; }
-        const seq = active.nextChunk; const part = await file.slice(active.sent, active.sent + chunkSize).arrayBuffer();
+        if (channel.bufferedAmount > (active.highWater || tuning.highWater)) { await new Promise(resolve => { channel.addEventListener('bufferedamountlow', resolve, { once: true }); }); continue; }
+        const seq = active.nextChunk; const size=active.chunkSize||defaultChunkSize; const part = await file.slice(active.sent, active.sent + size).arrayBuffer();
         if (active?.id !== id || active.paused) return;
         active.hasher.update(part); channel.send(packChunk(seq, part)); active.sent += part.byteLength; active.nextChunk++;
         progress(active.sent, file.size, active.started, 'sending');
@@ -585,6 +653,10 @@
   }
   async function control(raw) {
     let msg; try { msg = JSON.parse(raw); } catch { return; }
+    if(msg.type==='benchmark-start'&&typeof msg.id==='string'){benchmarkIncoming=msg.id;channel.send(JSON.stringify({type:'benchmark-ready',id:msg.id}));return;}
+    if(msg.type==='benchmark-ready'&&benchmarkState?.id===msg.id){sendBenchmarkPayload();return;}
+    if(msg.type==='benchmark-end'&&benchmarkIncoming===msg.id){benchmarkIncoming='';channel.send(JSON.stringify({type:'benchmark-ack',id:msg.id,bytes:msg.bytes}));return;}
+    if(msg.type==='benchmark-ack'&&benchmarkState?.id===msg.id&&benchmarkState.started){const seconds=Math.max(.001,(performance.now()-benchmarkState.started)/1000);benchmarkState.resolve?.((Number(msg.bytes)||benchmarkState.bytes)/seconds);return;}
     if (msg.type === 'hello') { peerName=sanitizeDeviceName(msg.name); els['peer-name'].textContent=peerName; return; }
     if (msg.type === 'batch-request') {
       if (active || pending || !msg.id || typeof msg.name !== 'string' || !Number.isSafeInteger(msg.count) || msg.count < 1 || !Number.isSafeInteger(msg.totalSize) || msg.totalSize < 0) return;
@@ -602,7 +674,8 @@
       if (active || pending || typeof msg.name !== 'string' || msg.name.length > 255 || !Number.isSafeInteger(msg.size) || msg.size < 0 || typeof msg.id !== 'string') { channel.send(JSON.stringify({ type: 'decline', id: msg.id })); return; }
       const safeName = msg.name.replace(/[\\/\x00-\x1f\x7f]/g, '_').trim() || 'download';
       const safePath = typeof msg.relativePath === 'string' ? msg.relativePath.split('/').filter(Boolean).map(part => part.replace(/[\\\x00-\x1f\x7f]/g, '_')).join('/') : '';
-      pending = { id: msg.id, name: safeName, relativePath: safePath, size: msg.size, batchId:typeof msg.batchId === 'string' ? msg.batchId : null };
+      const requestedChunk=Number.isSafeInteger(msg.chunkSize)&&msg.chunkSize>=16*1024&&msg.chunkSize<=64*1024?msg.chunkSize:defaultChunkSize;
+      pending = { id: msg.id, name: safeName, relativePath: safePath, size: msg.size, chunkSize:requestedChunk, batchId:typeof msg.batchId === 'string' ? msg.batchId : null };
       if (pending.batchId && incomingBatch?.id === pending.batchId && incomingBatch.accepted) { await acceptPendingFile(true); return; }
       els['incoming-title'].textContent = tr('incomingFile');
       els['incoming-detail'].textContent = `${pending.relativePath || pending.name} · ${format(msg.size)}`;
@@ -636,6 +709,7 @@
         lastReceivedFile=shareFile;
         els['share-last-file'].hidden=!(shareFile && navigator.share && (!navigator.canShare || navigator.canShare({files:[shareFile]})));
         await recordHistory({name:active.relativePath||active.name,size:active.size,direction:'receive',verified:true,sha256:localHash});
+        if(incomingBatch){incomingBatch.completedBytes=(incomingBatch.completedBytes||0)+active.size;incomingBatch.completedCount=(incomingBatch.completedCount||0)+1;}
         completionCue();
         await clearPersistent();
         stopTransfer('verifiedReceived', false);
@@ -691,7 +765,7 @@
     }
     if (pending?.id !== request.id) { writer?.abort(); return; }
     pending = null; els.incoming.hidden = true;
-    active = { ...request, direction:'receive', received:0, committedBytes:0, nextChunk:0, hasher:new BlinkSHA256(), chunks:writer ? null : [], writer, opfs, persistentHandle, started:Date.now(), paused:false };
+    active = { ...request, direction:'receive', chunkSize:request.chunkSize||defaultChunkSize, received:0, committedBytes:0, nextChunk:0, hasher:new BlinkSHA256(), chunks:writer ? null : [], writer, opfs, persistentHandle, started:Date.now(), paused:false };
     showTransfer(request.relativePath || request.name, request.size);
     await persistReceiveSession();
     channel.send(JSON.stringify({ type:'accept', id:request.id }));
@@ -706,7 +780,7 @@
           rootHandle = await parent.getDirectoryHandle(request.name, { create:true });
         } catch (error) { if (error.name === 'AbortError') return; notice('saveLocationFailed'); return; }
       }
-      incomingBatch = { id:request.id, name:request.name, rootHandle, accepted:true };
+      incomingBatch = { id:request.id, name:request.name, rootHandle, accepted:true, totalSize:request.totalSize, count:request.count, completedBytes:0, completedCount:0 };
       await persistBatchContext();
       pending = null; els.incoming.hidden = true; channel.send(JSON.stringify({ type:'batch-accept', id:request.id })); status('verified', true); return;
     }
@@ -794,14 +868,15 @@
         outgoing = s.batchEntries.slice(Math.max(0,idx+1)).map(x=>({ ...x, file:null }));
         for (const entry of outgoing) entry.file = await entry.handle.getFile();
       }
-      active={ id:s.transferId, direction:'send', file, sourceEntry:{handle:s.handle,file,relativePath:s.relativePath}, relativePath:s.relativePath||'', batchId:s.batchId||null, sent:0,nextChunk:0,hasher:new BlinkSHA256(),started:Date.now(),accepted:true,paused:true };
+      active={ id:s.transferId, direction:'send', file, sourceEntry:{handle:s.handle,file,relativePath:s.relativePath}, relativePath:s.relativePath||'', batchId:s.batchId||null, chunkSize:s.chunkSize||defaultChunkSize,highWater:tuning.highWater,sent:0,nextChunk:0,hasher:new BlinkSHA256(),started:Date.now(),accepted:true,paused:true };
       showTransfer(s.relativePath || s.name, s.size); active.stage='resuming'; renderTransfer();
     } else {
       const existing=await s.handle.getFile(); const bytes=Math.min(s.received||0,existing.size);
       const writer=await s.handle.createWritable({keepExistingData:true}); await writer.seek(bytes);
       incomingBatch = s.batchId ? { id:s.batchId, name:s.batchName, rootHandle:s.batchRootHandle, accepted:true } : null;
       let restoredOpfs=null; if (s.opfs && s.opfsTempName) { const root=await navigator.storage.getDirectory(); restoredOpfs={root,handle:s.handle,tempName:s.opfsTempName}; }
-      active={ id:s.transferId,direction:'receive',name:s.name,size:s.size,relativePath:s.relativePath||'',received:bytes,committedBytes:bytes,nextChunk:Math.floor(bytes/chunkSize),hasher:await rebuildReceiveHasher(s.handle,bytes),chunks:null,writer,persistentHandle:s.handle,opfs:restoredOpfs,started:Date.now(),paused:true,batchId:s.batchId||null };
+      const restoredChunk=s.chunkSize||defaultChunkSize;
+      active={ id:s.transferId,direction:'receive',name:s.name,size:s.size,relativePath:s.relativePath||'',chunkSize:restoredChunk,received:bytes,committedBytes:bytes,nextChunk:Math.floor(bytes/restoredChunk),hasher:await rebuildReceiveHasher(s.handle,bytes),chunks:null,writer,persistentHandle:s.handle,opfs:restoredOpfs,started:Date.now(),paused:true,batchId:s.batchId||null };
       showTransfer(s.relativePath || s.name,s.size); active.stage='resuming'; renderTransfer();
     }
     els['resume-card'].hidden=true; resumeSession=null;
