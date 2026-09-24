@@ -749,11 +749,10 @@
     for(const entry of entries){merged.set(entry.payload,cursor);cursor+=entry.payload.byteLength;}
     try{await state.writer.write({type:'write',position:start,data:merged});}
     catch{await state.writer.seek(start);await state.writer.write(merged);}
-    for(const entry of entries){
-      if(entry.seq!==state.nextChunk)state.hashDirty=true;
-      if(!state.hashDirty&&entry.seq===state.nextChunk)state.hasher.update(entry.payload);
-      BlinkTransfer.commitChunk(state,entry.seq,entry.payload.byteLength);
-    }
+    let expectedSeq=state.nextChunk,sequential=!state.hashDirty;
+    for(const entry of entries){if(entry.seq!==expectedSeq){sequential=false;break;}expectedSeq++;}
+    if(sequential)state.hasher.update(merged);else state.hashDirty=true;
+    for(const entry of entries)BlinkTransfer.commitChunk(state,entry.seq,entry.payload.byteLength);
     if(state===active)progress(state.received,state.size,state.started,'receiving');
     if(state===active&&state.persistentHandle&&state.writer&&state.received-(state.committedBytes||0)>=(tuning.checkpointBytes||64*1024*1024)){
       await state.writer.close();state.committedBytes=state.received;await persistReceiveSession();state.writer=await state.persistentHandle.createWritable({keepExistingData:true});
