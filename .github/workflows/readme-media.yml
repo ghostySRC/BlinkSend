@@ -1,0 +1,34 @@
+name: Refresh README media
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install --disable-pip-version-check pillow==11.3.0
+      - run: python scripts/generate-readme-media.py
+      - name: Commit refreshed media
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/media/desktop.webp docs/media/mobile.webp docs/media/mobile-dark.webp docs/media/pairing.gif docs/media/transfer.gif
+          if git diff --cached --quiet; then
+            echo "README media already current."
+            exit 0
+          fi
+          git commit -m "Refresh README visuals for v0.2.0"
+          git fetch origin "${GITHUB_REF_NAME}"
+          git rebase "origin/${GITHUB_REF_NAME}"
+          git push origin HEAD:"${GITHUB_REF_NAME}"

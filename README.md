@@ -7,6 +7,36 @@
 
 > **Status:** BlinkSend is an actively developed self-hosted project. The automated suite covers the transfer protocol, signaling abuse controls, integrity checks, PWA metadata, and large-transfer simulations; real-device/browser behavior can still differ by platform APIs.
 
+## See it in action
+
+<p align="center">
+  <img src="docs/media/desktop.webp" width="920" alt="BlinkSend v0.2.0 Send and Receive start screen">
+</p>
+
+<p align="center">
+  <img src="docs/media/mobile.webp" width="270" alt="BlinkSend v0.2.0 mobile light theme">
+  &nbsp;&nbsp;
+  <img src="docs/media/mobile-dark.webp" width="270" alt="BlinkSend v0.2.0 mobile dark theme">
+</p>
+
+### Pair in seconds
+
+<p align="center">
+  <img src="docs/media/pairing.gif" width="720" alt="Animated BlinkSend pairing walkthrough with manual code and peer verification">
+</p>
+
+The pairing demo shows the current flow: enter the temporary eight-character code, compare the same six-digit DTLS fingerprint code on both devices, then confirm **Codes match**. The oversized cursor, eased movement, click ripples, and action labels are intentionally part of the walkthrough so the flow stays readable even when the GIF is viewed small.
+
+### Send, watch progress, verify
+
+<p align="center">
+  <img src="docs/media/transfer.gif" width="720" alt="Animated BlinkSend transfer walkthrough with speed, ETA, progress and SHA-256 verification">
+</p>
+
+The transfer demo highlights Direct connection quality, live speed/ETA, whole-transfer progress, and the final SHA-256 verified state. The filenames, speeds, codes, and times shown in the documentation renders are illustrative rather than benchmark claims.
+
+The README media is reproducible: `scripts/generate-readme-media.py` renders these assets, and the dedicated **Refresh README media** workflow can regenerate and commit them on demand after UI changes.
+
 ## Current flow
 
 1. Open BlinkSend and choose **Send** or **Receive**.
