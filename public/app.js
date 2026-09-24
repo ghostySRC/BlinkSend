@@ -1,6 +1,6 @@
 (() => {
   const $ = id => document.getElementById(id);
-  const els = Object.fromEntries(['install-app','settings-toggle','settings-panel','settings-close','device-name','notify-complete','nearby-discovery','nearby-code','history-list','clear-history','mode-picker','mode-send','mode-receive','receive-join','join-link','join-room','join-code','join-code-button','join-back','scan-qr','find-nearby','nearby-results','qr-scanner','scanner-video','scanner-help','scanner-close','resume-card','resume-detail','resume-transfer','discard-resume','transfer-workspace','invite-card','pair-code-wrap','pair-code','pair-code-help','transfer-card','send-controls','receive-wait','qr','copy','new-room','status','status-dot','peer-name','connection-quality','verify-peer','verify-code','verify-match','file','folder','choose-folder','share-text','send-text','received-text','received-content','received-link','copy-received','share-received','share-last-file','drop','transfer-info','batch-summary','file-name','file-size','progress','progress-text','cancel','queue-status','notice','incoming','incoming-title','incoming-detail','save-note','accept','decline'].map(id => [id, $(id)]));
+  const els = Object.fromEntries(['install-app','settings-toggle','settings-panel','settings-close','device-name','notify-complete','nearby-discovery','nearby-code','history-list','clear-history','recent-peers','diagnostics-toggle','diagnostics-panel','diag-connection','diag-transport','diag-rtt','diag-measured','diag-chunk','diag-buffer','diag-reconnects','diag-capabilities','mode-picker','mode-send','mode-receive','receive-join','join-link','join-room','join-code','join-code-button','join-back','scan-qr','find-nearby','nearby-results','qr-scanner','scanner-video','scanner-help','scanner-close','resume-card','resume-detail','resume-transfer','discard-resume','transfer-workspace','invite-card','pair-code-wrap','pair-code','pair-code-help','transfer-card','send-controls','receive-wait','qr','copy','new-room','status','status-dot','peer-name','connection-quality','verify-peer','verify-code','verify-match','file','folder','choose-folder','share-text','send-text','received-text','received-content','received-link','copy-received','share-received','share-last-file','drop','queue-panel','queue-summary','queue-list','clear-queue','transfer-state-banner','transfer-info','batch-summary','file-name','file-size','progress','progress-text','cancel','queue-status','post-transfer','send-another','notice','incoming','incoming-title','incoming-detail','save-note','accept','decline'].map(id => [id, $(id)]));
   const translations = {
   "en": {
     "language": "Language",
@@ -73,6 +73,33 @@
     "clearHistory": "Clear",
     "noHistory": "No transfers yet.",
     "historyPrivate": "Stored only in this browser.",
+    "recentDevices": "Recent devices",
+    "noRecentDevices": "No recent devices.",
+    "diagnostics": "Diagnostics",
+    "showDiagnostics": "Show",
+    "hideDiagnostics": "Hide",
+    "diagConnection": "Connection",
+    "diagTransport": "Transport",
+    "diagRtt": "Round trip",
+    "diagMeasured": "Measured speed",
+    "diagChunk": "Chunk size",
+    "diagBuffer": "Send buffer",
+    "diagReconnects": "Reconnects",
+    "diagCapabilities": "Browser support",
+    "transferQueue": "Transfer queue",
+    "clearQueue": "Clear pending",
+    "queueSummary": "%count% pending · %size%",
+    "queueLocked": "Folder batch is active — pending membership is locked.",
+    "moveUp": "Move up",
+    "moveDown": "Move down",
+    "remove": "Remove",
+    "transferDone": "Transfer verified",
+    "sessionStillConnected": "The devices are still connected.",
+    "sendAnother": "Send another",
+    "reconnectBanner": "Connection lost — reconnecting without discarding progress…",
+    "reverifyBanner": "Connection restored — compare the new verification code to resume.",
+    "resumeBanner": "Resuming from %percent%%…",
+    "retryBanner": "Verification failed — retrying this file (%attempt%/2)…",
     "dropHere": "or drop them here on a computer",
     "transferProgress": "Transfer progress",
     "cancel": "Cancel",
@@ -217,6 +244,33 @@
     "clearHistory": "Rensa",
     "noHistory": "Inga överföringar än.",
     "historyPrivate": "Sparas bara i den här webbläsaren.",
+    "recentDevices": "Senaste enheter",
+    "noRecentDevices": "Inga senaste enheter.",
+    "diagnostics": "Diagnostik",
+    "showDiagnostics": "Visa",
+    "hideDiagnostics": "Dölj",
+    "diagConnection": "Anslutning",
+    "diagTransport": "Transport",
+    "diagRtt": "Tur och retur",
+    "diagMeasured": "Uppmätt hastighet",
+    "diagChunk": "Chunkstorlek",
+    "diagBuffer": "Sändbuffert",
+    "diagReconnects": "Återanslutningar",
+    "diagCapabilities": "Webbläsarstöd",
+    "transferQueue": "Överföringskö",
+    "clearQueue": "Rensa väntande",
+    "queueSummary": "%count% väntar · %size%",
+    "queueLocked": "Mappbatchen är aktiv — väntande filer är låsta.",
+    "moveUp": "Flytta upp",
+    "moveDown": "Flytta ned",
+    "remove": "Ta bort",
+    "transferDone": "Överföringen verifierad",
+    "sessionStillConnected": "Enheterna är fortfarande anslutna.",
+    "sendAnother": "Skicka en till",
+    "reconnectBanner": "Anslutningen bröts — återansluter utan att kasta framsteg…",
+    "reverifyBanner": "Anslutningen är tillbaka — jämför den nya verifieringskoden för att fortsätta.",
+    "resumeBanner": "Fortsätter från %percent%%…",
+    "retryBanner": "Verifieringen misslyckades — försöker filen igen (%attempt%/2)…",
     "dropHere": "eller dra dem hit på en dator",
     "transferProgress": "Överföringsförlopp",
     "cancel": "Avbryt",
@@ -348,8 +402,8 @@
   const defaultChunkSize = 64 * 1024;
   const maxMemoryFile = 200 * 1024 * 1024;
   let tuning=BlinkProtocol.chooseTuning({deviceMemory:navigator.deviceMemory||4,cores:navigator.hardwareConcurrency||4});
-  let connectionMetrics={rttMs:0,throughputBps:0,relayed:false};
-  let benchmarkState=null, benchmarkIncoming='', incomingText=null;
+  let connectionMetrics={rttMs:0,throughputBps:0,relayed:false,localType:'',remoteType:''};
+  let benchmarkState=null, benchmarkIncoming='', incomingText=null, reconnectCount=0, diagnosticsTimer=0;
   const maxTextBytes = 256 * 1024;
   const supportsOpfs = !!navigator.storage?.getDirectory;
   const format = bytes => bytes < 1024 ? `${bytes} B` : bytes < 1048576 ? `${(bytes / 1024).toFixed(1)} KB` : bytes < 1073741824 ? `${(bytes / 1048576).toFixed(1)} MB` : `${(bytes / 1073741824).toFixed(2)} GB`;
@@ -386,6 +440,12 @@
   let deviceName = sanitizeDeviceName(readSetting('blinksend-device-name')) || 'BlinkSend device';
   let completionFeedback = readSetting('blinksend-completion-feedback') === '1';
   let nearbyDiscovery = readSetting('blinksend-nearby') === '1', scannerStream=null, scannerLoop=0;
+  function recentPeerNames(){try{return JSON.parse(readSetting('blinksend-recent-peers')||'[]').filter(x=>typeof x==='string').slice(0,6);}catch{return [];}}
+  function rememberPeerName(name){name=sanitizeDeviceName(name);if(!name)return;const names=[name,...recentPeerNames().filter(x=>x!==name)].slice(0,6);saveSetting('blinksend-recent-peers',JSON.stringify(names));renderRecentPeers();}
+  function renderRecentPeers(){const names=recentPeerNames();els['recent-peers'].innerHTML='';if(!names.length){const span=document.createElement('span');span.className='hint';span.textContent=tr('noRecentDevices');els['recent-peers'].append(span);return;}for(const name of names){const span=document.createElement('span');span.className='recent-peer';span.textContent=name;els['recent-peers'].append(span);}}
+  function setTransferBanner(text='',state=''){if(!text){els['transfer-state-banner'].hidden=true;els['transfer-state-banner'].textContent='';els['transfer-state-banner'].removeAttribute('data-state');return;}els['transfer-state-banner'].hidden=false;els['transfer-state-banner'].dataset.state=state;els['transfer-state-banner'].textContent=text;}
+  function updateDiagnostics(){const direct=connectionMetrics.relayed?tr('pathRelay'):tr('pathDirect');els['diag-connection'].textContent=pc?.connectionState||'—';els['diag-transport'].textContent=channel?.readyState==='open'?`${direct}${connectionMetrics.localType||connectionMetrics.remoteType?` · ${connectionMetrics.localType||'?'}→${connectionMetrics.remoteType||'?'}`:''}`:'—';els['diag-rtt'].textContent=connectionMetrics.rttMs?`${connectionMetrics.rttMs} ms`:'—';els['diag-measured'].textContent=connectionMetrics.throughputBps?`${format(connectionMetrics.throughputBps)}/s`:'—';els['diag-chunk'].textContent=format(active?.chunkSize||tuning.chunkSize);els['diag-buffer'].textContent=format(active?.highWater||tuning.highWater);els['diag-reconnects'].textContent=String(reconnectCount);els['diag-capabilities'].textContent=[window.showOpenFilePicker?'File picker':'Downloads',window.showDirectoryPicker?'Folders':'Folder fallback',supportsOpfs?'OPFS':'No OPFS','serviceWorker' in navigator?'PWA':'No PWA',navigator.share?'Share':'No Share'].join(' · ');}
+  function renderQueue(){const locked=!!outgoingBatch,count=outgoing.length,total=outgoing.reduce((n,e)=>n+(e.file?.size||e.size||0),0);els['queue-panel'].hidden=!count;els['queue-summary'].textContent=count?tr('queueSummary',{count,size:format(total)}):'';els['clear-queue'].disabled=locked||!count;els['clear-queue'].title=locked?tr('queueLocked'):'';els['queue-list'].innerHTML='';outgoing.forEach((entry,index)=>{const row=document.createElement('div');row.className='queue-item';const main=document.createElement('div');main.className='queue-item-main';const name=document.createElement('span');name.className='queue-item-name';name.textContent=entry.relativePath||entry.file?.name||entry.name||'File';const size=document.createElement('span');size.className='queue-item-size';size.textContent=format(entry.file?.size||entry.size||0);main.append(name,size);const actions=document.createElement('div');actions.className='queue-item-actions';for(const [symbol,title,delta] of [['↑',tr('moveUp'),-1],['↓',tr('moveDown'),1]]){const b=document.createElement('button');b.type='button';b.className='queue-icon-button';b.textContent=symbol;b.title=title;b.disabled=(delta<0&&index===0)||(delta>0&&index===outgoing.length-1);b.onclick=()=>{const next=index+delta;[outgoing[index],outgoing[next]]=[outgoing[next],outgoing[index]];renderQueue();};actions.append(b);}const remove=document.createElement('button');remove.type='button';remove.className='queue-icon-button';remove.textContent='×';remove.title=tr('remove');remove.disabled=locked;remove.onclick=()=>{outgoing.splice(index,1);batchTotal=Math.max(batchDone+(active?1:0)+outgoing.length,active?1:0);renderQueue();renderTransfer();};actions.append(remove);row.append(main,actions);els['queue-list'].append(row);});}
   async function renderHistory() {
     if (!window.BlinkStore?.listHistory) return;
     try {
@@ -396,7 +456,7 @@
         const row=document.createElement('div');row.className='history-item';
         const name=document.createElement('strong');name.textContent=item.name || 'Transfer';
         const size=document.createElement('span');size.textContent=format(item.size||0);
-        const detail=document.createElement('span');detail.textContent=`${item.direction==='send'?'Sent':'Received'} · ${item.verified?'SHA-256 verified':'Completed'}`;
+        const detail=document.createElement('span');detail.textContent=`${item.direction==='send'?'Sent':'Received'}${item.peer?` · ${item.peer}`:''} · ${item.verified?'SHA-256 verified':'Completed'}`;
         const when=document.createElement('span');when.textContent=new Date(item.createdAt).toLocaleString(language==='sv'?'sv-SE':'en');
         row.append(name,size,detail,when);els['history-list'].append(row);
       }
@@ -414,9 +474,9 @@
     els['status-dot'].classList.toggle('ready', ready);
     els['peer-name'].textContent = peerName ? peerName : '';
     const unlocked = ready && peerVerified && !calibrating && mode === 'send';
-    els.file.disabled = !unlocked || !!active || !!pending;
-    els.folder.disabled = els.file.disabled;
-    els['choose-folder'].disabled = els.file.disabled;
+    els.file.disabled = !unlocked || !!pending || !!outgoingBatch;
+    els.folder.disabled = !unlocked || !!pending || !!active || !!outgoingBatch;
+    els['choose-folder'].disabled = els.folder.disabled;
     els['share-text'].disabled = !unlocked;
     els['send-text'].disabled = !unlocked;
     els.drop.classList.toggle('disabled', els.file.disabled);
@@ -425,7 +485,7 @@
   function signal(type, payload) { if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type, payload })); }
   function pauseTransfer() {
     if (!active) return;
-    active.paused = true; active.stage = 'paused'; progressState = null; renderTransfer();
+    active.paused = true; active.stage = 'paused'; progressState = null; setTransferBanner(tr('reconnectBanner'),'warning'); renderTransfer();
   }
   function resetPeer() {
     clearTimeout(connectTimer);
@@ -463,8 +523,8 @@
       const local = stats.get(pair?.localCandidateId), remote = stats.get(pair?.remoteCandidateId);
       const relayed=local?.candidateType==='relay'||remote?.candidateType==='relay';
       const rttSec=pair?.currentRoundTripTime||(pair?.totalRoundTripTime&&pair?.responsesReceived?pair.totalRoundTripTime/pair.responsesReceived:0);
-      connectionMetrics.relayed=!!relayed;connectionMetrics.rttMs=Math.round((rttSec||0)*1000);
-      readyLabel=!pair?'ready':relayed?'readyRelay':'readyDirect';updateQualityLabel();
+      connectionMetrics.relayed=!!relayed;connectionMetrics.rttMs=Math.round((rttSec||0)*1000);connectionMetrics.localType=local?.candidateType||'';connectionMetrics.remoteType=remote?.candidateType||'';
+      readyLabel=!pair?'ready':relayed?'readyRelay':'readyDirect';updateQualityLabel();updateDiagnostics();
       await showVerificationCode();
     } catch { if (pc === current && channel?.readyState === 'open') await showVerificationCode(); }
   }
@@ -489,7 +549,7 @@
     pc.ondatachannel = e => setupChannel(e.channel);
   }
   function scheduleIceRestart(){
-    clearTimeout(iceRestartTimer);iceRestartTimer=setTimeout(async()=>{
+    clearTimeout(iceRestartTimer);reconnectCount++;updateDiagnostics();iceRestartTimer=setTimeout(async()=>{
       if(!isOfferer||!pc||socket?.readyState!==WebSocket.OPEN)return;
       try{pc.restartIce?.();await pc.setLocalDescription(await pc.createOffer({iceRestart:true}));signal('offer',pc.localDescription.toJSON());status('reconnecting');}catch{}
     },600);
@@ -503,7 +563,7 @@
     ch.onopen = () => {
       clearTimeout(connectTimer); connectionPath(); notice();
       ch.send(JSON.stringify({type:'hello',name:deviceName}));
-      if (active) { active.paused = true; active.stage = 'resuming'; renderTransfer(); }
+      if (active) { active.paused = true; active.stage = 'resuming'; setTransferBanner(tr('reverifyBanner'),'warning'); renderTransfer(); }
     };
     ch.onclose = () => { pauseTransfer(); status(active ? 'paused' : 'peerLeft'); };
     ch.onmessage = e => {
@@ -558,7 +618,7 @@
     if (active?.writer) active.writer.abort().catch(() => {});
     if (active?.opfs) active.opfs.root.removeEntry(active.opfs.tempName).catch(() => {});
     active = null; progressState = null;
-    if (!preserveQueue) { outgoing = []; batchTotal = 0; batchDone = 0; }
+    if (!preserveQueue) { outgoing = []; batchTotal = 0; batchDone = 0; outgoingBatch=null; renderQueue(); }
     els['transfer-info'].hidden = true; els.file.value = '';
     status(channel?.readyState === 'open' ? readyLabel : 'waiting', channel?.readyState === 'open');
     notice(message, vars);
@@ -669,12 +729,12 @@
     if(!BlinkProtocol.validateRanges(ranges,total))return;
     active.fullHash=await hashWholeFile(active.file,size);active.hasher=null;active.sendRanges=ranges.map(r=>[r[0],r[1]]);active.rangeIndex=0;active.rangeSeq=active.sendRanges[0]?.[0]??total;
     let missing=0;for(const [s,e] of active.sendRanges){const start=s*size,end=Math.min(active.file.size,(e+1)*size);missing+=Math.max(0,end-start);}
-    active.sent=Math.max(0,active.file.size-missing);active.paused=false;active.stage='resuming';progress(active.sent,active.file.size,active.started,'sending');pump(active.id);
+    active.sent=Math.max(0,active.file.size-missing);active.paused=false;active.stage='resuming';setTransferBanner(tr('resumeBanner',{percent:Math.floor((active.sent/Math.max(1,active.file.size))*100)}),'ok');progress(active.sent,active.file.size,active.started,'sending');pump(active.id);
   }
   async function resumeOutgoing(nextChunk) {
     if (!active || active.direction !== 'send' || !Number.isSafeInteger(nextChunk) || nextChunk < 0) return;
     const size=active.chunkSize||defaultChunkSize; const offset = Math.min(active.file.size, nextChunk * size); active.sent = offset; active.nextChunk = nextChunk;
-    active.hasher = await hashPrefix(active.file, offset, size); active.fullHash=''; active.sendRanges=null; active.paused = false; active.stage = 'resuming';
+    active.hasher = await hashPrefix(active.file, offset, size); active.fullHash=''; active.sendRanges=null; active.paused = false; active.stage = 'resuming';setTransferBanner(tr('resumeBanner',{percent:Math.floor((offset/Math.max(1,active.file.size))*100)}),'ok');
     progress(offset, active.file.size, active.started, 'sending'); pump(active.id);
   }
   async function sendFile(entry) {
@@ -689,30 +749,21 @@
   }
   function sendNext() {
     if (active || pending || channel?.readyState !== 'open') return;
-    const file = outgoing.shift();
-    if (file) { notice(); sendFile(file); }
-    else { batchTotal = 0; batchDone = 0; }
+    const file=outgoing.shift();renderQueue();
+    if(file){notice();sendFile(file);}else{batchTotal=0;batchDone=0;renderQueue();}
   }
   function finishOutgoing(message, vars = {}) {
-    const finishedSize=active?.file?.size||0;
-    if(outgoingBatch){outgoingBatch.completedBytes=(outgoingBatch.completedBytes||0)+finishedSize;outgoingBatch.completedCount=(outgoingBatch.completedCount||0)+1;}
-    stopTransfer(message, false, true, vars);
-    batchDone++;
-    if (outgoing.length) setTimeout(sendNext, 0);
-    else { if (outgoingBatch?.id && channel?.readyState === 'open') channel.send(JSON.stringify({type:'batch-complete',id:outgoingBatch.id})); batchTotal = 0; batchDone = 0; outgoingBatch = null; clearPersistent(); }
+    const finishedSize=active?.file?.size||0;if(outgoingBatch){outgoingBatch.completedBytes=(outgoingBatch.completedBytes||0)+finishedSize;outgoingBatch.completedCount=(outgoingBatch.completedCount||0)+1;}
+    stopTransfer(message,false,true,vars);batchDone++;
+    if(outgoing.length)setTimeout(sendNext,0);
+    else{if(outgoingBatch?.id&&channel?.readyState==='open')channel.send(JSON.stringify({type:'batch-complete',id:outgoingBatch.id}));batchTotal=0;batchDone=0;outgoingBatch=null;clearPersistent();renderQueue();els['post-transfer'].hidden=false;}
   }
-  function enqueueEntries(entries, folderName = '') {
-    if (!entries?.length || channel?.readyState !== 'open' || active || pending) return;
-    outgoing = entries.map(entry => entry.file ? entry : ({ file:entry, relativePath:entry.webkitRelativePath || '' }));
-    batchTotal = outgoing.length; batchDone = 0;
-    const isFolder = !!folderName || outgoing.some(x => x.relativePath);
-    if (isFolder && outgoing.length) {
-      const id = crypto.randomUUID();
-      const name = folderName || outgoing[0].relativePath.split('/')[0] || 'Folder';
-      const totalSize = outgoing.reduce((sum,x)=>sum+x.file.size,0);
-      outgoingBatch = { id, name, entries:[...outgoing], totalSize, count:outgoing.length, completedBytes:0, completedCount:0 };
-      channel.send(JSON.stringify({ type:'batch-request', id, name, count:outgoing.length, totalSize }));
-    } else sendNext();
+  function enqueueEntries(entries,folderName=''){
+    if(!entries?.length||channel?.readyState!=='open'||pending||outgoingBatch)return;
+    const normalized=entries.map(entry=>entry.file?entry:({file:entry,relativePath:entry.webkitRelativePath||''})),isFolder=!!folderName||normalized.some(x=>x.relativePath);
+    if(isFolder&&active){notice('finishFirst');return;}
+    if(isFolder){outgoing=[...normalized];batchTotal=outgoing.length;batchDone=0;const id=crypto.randomUUID(),name=folderName||outgoing[0].relativePath.split('/')[0]||'Folder',totalSize=outgoing.reduce((sum,x)=>sum+x.file.size,0);outgoingBatch={id,name,entries:[...outgoing],totalSize,count:outgoing.length,completedBytes:0,completedCount:0};renderQueue();channel.send(JSON.stringify({type:'batch-request',id,name,count:outgoing.length,totalSize}));return;}
+    outgoing.push(...normalized);batchTotal=batchDone+(active?1:0)+outgoing.length;renderQueue();if(!active)sendNext();
   }
   function enqueueFiles(files) { enqueueEntries([...files].map(file => ({ file, relativePath:file.webkitRelativePath || '' }))); }
   async function pump(id) {
@@ -745,7 +796,7 @@
     if(msg.type==='benchmark-ready'&&benchmarkState?.id===msg.id){sendBenchmarkPayload();return;}
     if(msg.type==='benchmark-end'&&benchmarkIncoming===msg.id){benchmarkIncoming='';channel.send(JSON.stringify({type:'benchmark-ack',id:msg.id,bytes:msg.bytes}));return;}
     if(msg.type==='benchmark-ack'&&benchmarkState?.id===msg.id&&benchmarkState.started){const seconds=Math.max(.001,(performance.now()-benchmarkState.started)/1000);benchmarkState.resolve?.((Number(msg.bytes)||benchmarkState.bytes)/seconds);return;}
-    if (msg.type === 'hello') { peerName=sanitizeDeviceName(msg.name); els['peer-name'].textContent=peerName; return; }
+    if (msg.type === 'hello') { peerName=sanitizeDeviceName(msg.name); els['peer-name'].textContent=peerName; rememberPeerName(peerName); updateDiagnostics(); return; }
     if (msg.type === 'batch-request') {
       if (active || pending || !msg.id || typeof msg.name !== 'string' || !Number.isSafeInteger(msg.count) || msg.count < 1 || !Number.isSafeInteger(msg.totalSize) || msg.totalSize < 0) return;
       pending = { type:'batch', id:msg.id, name:msg.name.replace(/[\\/\x00-\x1f\x7f]/g,'_').trim() || 'Folder', count:msg.count, totalSize:msg.totalSize };
@@ -782,7 +833,7 @@
       if(!peerVerified)active.pendingRanges=msg.ranges;else await resumeOutgoingRanges(msg.ranges);
     }
     if(msg.type==='retry'&&active?.id===msg.id&&active.direction==='send'){
-      active.retries=(active.retries||0)+1;if(active.retries>2){finishOutgoing('transferFailed');return;}
+      active.retries=(active.retries||0)+1;setTransferBanner(tr('retryBanner',{attempt:active.retries}),'warning');if(active.retries>2){finishOutgoing('transferFailed');return;}
       active.sent=0;active.nextChunk=0;active.sendRanges=null;active.fullHash='';active.hasher=new BlinkSHA256();active.paused=false;active.stage='sending';pump(active.id);
     }
     if (msg.type === 'verify-confirm') { remoteVerified = true; maybeFinishVerification(); }
@@ -811,18 +862,18 @@
         channel.send(JSON.stringify({ type: 'saved', id: msg.id, sha256: localHash }));
         lastReceivedFile=shareFile;
         els['share-last-file'].hidden=!(shareFile && navigator.share && (!navigator.canShare || navigator.canShare({files:[shareFile]})));
-        await recordHistory({name:active.relativePath||active.name,size:active.size,direction:'receive',verified:true,sha256:localHash});
+        await recordHistory({name:active.relativePath||active.name,size:active.size,direction:'receive',verified:true,sha256:localHash,peer:peerName});
         if(incomingBatch){incomingBatch.completedBytes=(incomingBatch.completedBytes||0)+active.size;incomingBatch.completedCount=(incomingBatch.completedCount||0)+1;}
         completionCue();
         await clearPersistent();
-        stopTransfer('verifiedReceived', false);
+        stopTransfer('verifiedReceived', false);setTransferBanner();
       } catch { stopTransfer('saveFailed'); }
     }
     if (msg.type === 'saved' && active?.id === msg.id && active.direction === 'send') {
       const sentHash = active.hasher.hex(); if (msg.sha256 !== sentHash) { stopTransfer('hashMismatch', false); return; }
-      await recordHistory({name:active.relativePath||active.file.name,size:active.file.size,direction:'send',verified:true,sha256:sentHash});
+      await recordHistory({name:active.relativePath||active.file.name,size:active.file.size,direction:'send',verified:true,sha256:sentHash,peer:peerName});
       completionCue();
-      finishOutgoing('verifiedSent', { current: batchDone + 1, total: batchTotal });
+      setTransferBanner();finishOutgoing('verifiedSent', { current: batchDone + 1, total: batchTotal });
     }
     if(msg.type==='text-start'){
       if(typeof msg.id!=='string'||msg.id.length>80||!Number.isSafeInteger(msg.parts)||msg.parts<1||msg.parts>64||!Number.isSafeInteger(msg.bytes)||msg.bytes<0||msg.bytes>maxTextBytes)return;
@@ -891,7 +942,7 @@
   els.decline.onclick = () => { if (pending) channel.send(JSON.stringify({ type: pending.type === 'batch' ? 'batch-decline' : 'decline', id: pending.id })); pending = null; els.incoming.hidden = true; status(peerVerified ? 'verified' : 'verifyStatus', peerVerified); };
   els['verify-match'].onclick = () => { if (localVerified || channel?.readyState !== 'open') return; localVerified = true; els['verify-match'].disabled = true; channel.send(JSON.stringify({ type: 'verify-confirm' })); maybeFinishVerification(); };
   els.cancel.onclick = () => stopTransfer('cancelled');
-  els.file.onchange = () => enqueueFiles(els.file.files);
+  els.file.onchange = () => { const files=[...els.file.files]; els.file.value=''; enqueueFiles(files); };
   els.drop.onclick = async e => {
     if (els.file.disabled || !window.showOpenFilePicker) return;
     e.preventDefault();
@@ -907,7 +958,7 @@
     try { const handle = await showDirectoryPicker({ mode:'read' }); const entries = await collectDirectory(handle, handle.name); enqueueEntries(entries, handle.name); }
     catch (error) { if (error.name !== 'AbortError') notice('saveLocationFailed'); }
   };
-  els.folder.onchange = () => { const files=[...els.folder.files]; const name=files[0]?.webkitRelativePath?.split('/')[0] || ''; enqueueEntries(files.map(file=>({file,relativePath:file.webkitRelativePath||''})), name); };
+  els.folder.onchange = () => { const files=[...els.folder.files]; els.folder.value=''; const name=files[0]?.webkitRelativePath?.split('/')[0] || ''; enqueueEntries(files.map(file=>({file,relativePath:file.webkitRelativePath||''})), name); };
   async function receiveTextValue(text){
     const bytes=new TextEncoder().encode(text).byteLength;if(bytes>maxTextBytes)return;
     els['received-content'].textContent=text;els['received-text'].hidden=false;let link='';
@@ -1036,9 +1087,12 @@
       const tick=async()=>{if(!scannerStream)return;try{const codes=await detector.detect(els['scanner-video']);for(const code of codes){try{const u=new URL(code.rawValue),id=u.hash.slice(1).toLowerCase();if(u.origin===location.origin&&roomPattern.test(id)){stopScanner();startReceiveRoom(id);return;}}catch{}}}catch{}scannerLoop=requestAnimationFrame(tick);};tick();
     }catch{stopScanner();notice('cameraDenied');}
   }
+  els['clear-queue'].onclick=()=>{if(outgoingBatch)return;outgoing=[];batchTotal=active?batchDone+1:0;renderQueue();renderTransfer();};
+  els['send-another'].onclick=()=>{els['post-transfer'].hidden=true;setTransferBanner();els.drop.scrollIntoView({behavior:'smooth',block:'center'});};
+  els['diagnostics-toggle'].onclick=()=>{const show=els['diagnostics-panel'].hidden;els['diagnostics-panel'].hidden=!show;els['diagnostics-toggle'].textContent=tr(show?'hideDiagnostics':'showDiagnostics');clearInterval(diagnosticsTimer);if(show){updateDiagnostics();diagnosticsTimer=setInterval(updateDiagnostics,1000);}};
   els['settings-toggle'].onclick=()=>{els['settings-panel'].hidden=!els['settings-panel'].hidden;if(!els['settings-panel'].hidden)renderHistory();};
-  els['settings-close'].onclick=()=>{els['settings-panel'].hidden=true;};
-  els['device-name'].value=deviceName;
+  els['settings-close'].onclick=()=>{els['settings-panel'].hidden=true;clearInterval(diagnosticsTimer);diagnosticsTimer=0;};
+  els['device-name'].value=deviceName;renderRecentPeers();updateDiagnostics();
   els['device-name'].onchange=()=>{deviceName=sanitizeDeviceName(els['device-name'].value)||'BlinkSend device';els['device-name'].value=deviceName;saveSetting('blinksend-device-name',deviceName);if(channel?.readyState==='open')channel.send(JSON.stringify({type:'hello',name:deviceName}));if(nearbyDiscovery)registerNearby();};
   els['notify-complete'].checked=completionFeedback;
   els['nearby-discovery'].checked=nearbyDiscovery;
