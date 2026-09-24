@@ -482,7 +482,10 @@
       const task=createSenderHashTask(state.file);
       if(task){
         state.hashTask=task;
-        state.hashPromise=task.promise.then(hash=>{state.fullHash=hash;return hash;}).finally(()=>{if(state.hashTask===task)state.hashTask=null;});
+        state.hashPromise=task.promise.catch(async error=>{
+          if(active!==state)throw error;
+          return BlinkTransfer.hashWholeFile(state.file,state.chunkSize||defaultChunkSize);
+        }).then(hash=>{state.fullHash=hash;return hash;}).finally(()=>{if(state.hashTask===task)state.hashTask=null;});
         state.hashPromise.catch(()=>{});
       }else{
         state.hashPromise=BlinkTransfer.hashWholeFile(state.file,state.chunkSize||defaultChunkSize).then(hash=>{state.fullHash=hash;return hash;});
