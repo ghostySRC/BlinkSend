@@ -946,7 +946,6 @@
             const payload=view.subarray(local,local+len);
             channel.send(BlinkTransfer.packChunk(seq,payload));
             active.rangeSeq=++seq;active.sent=Math.min(file.size,active.sent+len);local+=len;
-            progress(active.sent,file.size,active.started,'sending');
           }
         }
         if(active?.id===id&&!active.paused){
@@ -964,7 +963,6 @@
           const seq=active.nextChunk,len=Math.min(size,view.byteLength-local);await respectSendCapacity(active.highWater||tuning.highWater,len);const payload=view.subarray(local,local+len);
           channel.send(BlinkTransfer.packChunk(seq,payload));
           active.sent+=len;active.nextChunk++;local+=len;
-          progress(active.sent,file.size,active.started,'sending');
         }
       }
       if(active?.id===id&&!active.paused){
@@ -1019,6 +1017,7 @@
     if(msg.type==='flow'&&active?.id===msg.id&&active.direction==='send'&&BlinkSecurity.validFlowUpdate(msg,active.file.size)){
       active.remoteReceived=Math.max(active.remoteReceived||0,msg.received);
       active.remoteWindow=msg.windowBytes;
+      progress(active.remoteReceived,active.file.size,active.started,'sending');
       active.flowWake?.();
       return;
     }
