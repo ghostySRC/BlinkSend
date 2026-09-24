@@ -1,45 +1,46 @@
 <p align="center"><img src="public/favicon.svg" width="68" alt="BlinkSend logo"></p>
 <h1 align="center">BlinkSend</h1>
 <p align="center">A self-hosted file transfer tool for two browsers.</p>
-<p align="center"><a href="#quick-start">Quick start</a> · <a href="#see-it-in-action">See it in action</a> · <a href="#deploy-your-own-instance">Self-host</a> · <a href="#how-it-works">How it works</a></p>
+<p align="center"><a href="#features">Features</a> · <a href="#quick-start">Quick start</a> · <a href="#how-it-works">How it works</a> · <a href="#deploy-your-own-instance">Self-host</a></p>
 
-<p align="center"><img src="docs/media/desktop.webp" width="900" alt="BlinkSend desktop interface in light mode, with the language and theme controls, QR invite, and file transfer panel"></p>
-<p align="center"><sub>Desktop · English · Light mode</sub></p>
 
-> **Early release:** transfers across real devices and networks still need field testing. There is no public hosted instance yet. The GIFs below are staged captures of the current interface; they show the transfer states, not a verified transfer between devices.
+> **Status:** BlinkSend is an actively developed self-hosted project. The automated suite covers the transfer protocol, signaling abuse controls, integrity checks, PWA metadata, and large-transfer simulations; real-device/browser behavior can still differ by platform APIs.
 
-## See it in action
+## Current flow
 
-### Pair two devices
+1. Open BlinkSend and choose **Send** or **Receive**.
+2. Pair with an invite link, QR code, in-app QR scanner, or optional Nearby discovery.
+3. Compare the same six-digit verification code on both devices and confirm it.
+4. Send files, folders, clipboard text, pasted screenshots/files, or content received from the operating system share sheet.
+5. BlinkSend shows Direct/Relay connection quality, smoothed speed, ETA, current-file progress, and whole-batch progress.
+6. Every file is SHA-256 verified. Interrupted transfers request missing chunk ranges; supported browsers can resume after a page reload.
 
-<p align="center"><img src="docs/media/pairing.gif" width="760" alt="BlinkSend pairing demonstration with the current header, changing from waiting to connecting to connected"></p>
-
-Open the room link on a second device or scan the QR code. The connection indicator changes when both browsers join.
-
-### Receive files
-
-<p align="center"><img src="docs/media/transfer.gif" width="760" alt="BlinkSend transfer demonstration showing an incoming file, receive progress, a second incoming file, and completion"></p>
-
-Select multiple files on the sender, accept each one on the receiver, and follow progress and speed in the browser.
-
-### Language and appearance
-
-<table align="center"><tr><th>English · Light mode</th><th>Svenska · Mörkt läge</th></tr><tr><td><img src="docs/media/mobile.webp" width="300" alt="BlinkSend on a phone in English and light mode"></td><td><img src="docs/media/mobile-dark.webp" width="300" alt="BlinkSend on a phone in Swedish and dark mode"></td></tr></table>
-
-Use the language selector and theme button in the header. BlinkSend remembers both choices on each device; before you choose a theme, it follows your system preference. The same interface adapts to smaller screens. A public HTTPS deployment is required to connect a phone to a computer outside this local preview.
+BlinkSend can also be installed as a PWA on supporting browsers. No account is required, and normal file contents are not stored by the BlinkSend signaling server.
 
 ## Features
 
 - Simple Send / Receive entry flow for computer ↔ computer and phone ↔ computer sharing through an invite link or QR code.
-- Send one file, several files, or choose an entire folder as a batch. On browsers with the File System Access API, BlinkSend recreates the folder tree automatically under one chosen destination.
+- Installable PWA on supporting browsers, with an application-shell service worker for fast relaunch. Peer-to-peer transfers still require both devices to be online.
+- In-app QR scanning on browsers that expose the Barcode Detection API and camera access; unsupported browsers can still use the system camera or paste the link.
+- Optional Nearby discovery is off by default. A sender can advertise a device name and short-lived code for five minutes to receivers seen behind the same network address; peer verification is still mandatory.
+- Send one file, several files, or choose an entire folder as a batch. On browsers with the File System Access API, BlinkSend recreates the folder tree automatically under one chosen destination. Dragging folders onto the drop area is also supported through modern File System handles, with a legacy directory-entry fallback where available.
 - Direct encrypted browser-to-browser transfer when the network allows it; optional TURN relay support for harder networks.
 - Peer verification code derived from the WebRTC DTLS fingerprints. Both devices must confirm the same six-digit code before sending is unlocked.
 - Incremental SHA-256 verification for every file. A transfer is only reported as verified after sender and receiver hashes match.
 - Transfer progress, average speed, cancellation, connection status, and clear errors when pairing fails.
-- Restart-safe resume on supported browsers: persistent file handles and IndexedDB session metadata allow an interrupted transfer to continue after a page reload. Receiver writes are checkpointed to disk so only the last uncommitted window may need to be resent.
-- Send an `http://` or `https://` link directly to the paired device without creating a file first.
-- Higher-throughput WebRTC sending with 64 KiB chunks and a larger buffered send window for fast local networks.
+- SHA-256 mismatches trigger up to two retries of only the affected file, so a bad file inside a large folder does not automatically discard the whole batch.
+- Network-interface changes (for example Wi-Fi to hotspot) trigger an ICE restart from the offerer; active transfers remain paused until the connection is usable again.
+- Restart-safe resume on supported browsers: persistent file handles and IndexedDB session metadata allow an interrupted transfer to continue after a page reload. Receiver writes are checkpointed to disk and a chunk bitmap/range map records what is present, so reconnects can request missing ranges rather than blindly restarting.
+- Send clipboard text, commands, snippets, or `http://` / `https://` links directly to the paired device without creating a file first. Text is capped at 256 KB and framed into small UTF-8 control messages instead of relying on one oversized SCTP message.
+- Paste-to-send: when the sender page is focused, pasting a clipboard file/image queues it; pasting text sends it directly.
+- Automatic connection calibration after peer verification: BlinkSend measures a small 512 KiB WebRTC sample, combines it with RTT/device capability, and tunes the data-channel buffer automatically. Transfer chunks remain conservatively capped at 64 KiB for browser compatibility.
+- Live transfer speed uses smoothing instead of a noisy instant value, includes an ETA, and folder batches show whole-batch bytes plus the current file.
+- Connection status reports Direct vs Relay plus a simple Excellent / Good / Fair / Poor quality label based on measured RTT and throughput.
 - English and Swedish interface, plus light and dark modes. Your choices are saved on each device; the initial theme follows your system setting.
+- Optional local device names are exchanged only with the connected peer. Optional completion sound/vibration stays off unless enabled.
+- Local-only transfer history keeps the latest verified file transfers and text sends in IndexedDB; it can be cleared from Settings.
+- Received files can be handed to the operating system's native share sheet when the browser supports Web Share files.
+- On platforms that support the Web Share Target API, BlinkSend can appear in the system Share menu. Shared files/text are intercepted locally by the service worker, staged in device-local IndexedDB, and then sent through the normal peer-to-peer flow after pairing.
 - Large files stream to disk on browsers with the File System Access API. A bounded memory download is used elsewhere.
 - Two participants per room, random 128-bit room links, no accounts, and no server-side file storage.
 
@@ -76,7 +77,7 @@ sequenceDiagram
 
 The Node server serves the web interface and exchanges WebRTC connection details over `/signal`. File contents travel over the WebRTC data channel. When a TURN relay is configured and needed, the relay carries encrypted WebRTC traffic and consumes relay bandwidth. The server keeps room membership in memory, with a maximum of two sockets per room; inactive rooms expire after 30 minutes. A server restart disconnects active rooms.
 
-For normal files, the recipient accepts the transfer before data starts. Folder transfers can be accepted once as a batch; on supported browsers the receiver chooses one destination and BlinkSend recreates nested directories automatically. Files are split into numbered chunks. Network reconnects resume from the receiver's next missing chunk. When both sides use persistent File System Access handles, BlinkSend also stores the active session in IndexedDB so a page reload can resume the current transfer after the user grants access again. Browsers without persistent handles keep the in-page resume behavior only. Offline delivery is not supported, and only one file is active at a time.
+For normal files, the recipient accepts the transfer before data starts. Folder transfers can be accepted once as a batch; on supported browsers the receiver chooses one destination and BlinkSend recreates nested directories automatically. Incoming relative paths are normalized and traversal segments such as `..` are rejected before any directory handle is opened. Files are split into numbered chunks. The receiver maintains a compact chunk bitmap and converts gaps into missing ranges during reconnect, allowing the sender to retransmit only those ranges. Network reconnects also attempt an ICE restart when the browser reports a network-interface change. When both sides use persistent File System Access handles, BlinkSend also stores the active session in IndexedDB so a page reload can resume the current transfer after the user grants access again. Browsers without persistent handles keep the in-page resume behavior only. Offline delivery is not supported, and only one file is active at a time.
 
 ## Browser and file limits
 
@@ -86,7 +87,7 @@ For normal files, the recipient accepts the transfer before data starts. Folder 
 | No save picker, but supports Origin Private File System (OPFS) | Streams large files into temporary browser-managed disk storage, then starts the download | No app-imposed size limit; available storage/quota and browser limits still apply |
 | No save picker and no OPFS | Buffers the file in memory, then starts a download | 200 MB per file |
 
-The 200 MB memory fallback now applies only when the browser exposes neither a save-file picker nor OPFS. Transfer speed depends on the sender's upload connection, the receiver's download connection, Wi-Fi quality, browser performance, and whether a relay is required. BlinkSend uses 64 KiB chunks and allows a larger amount of queued WebRTC data to better utilize fast connections, but it does not promise a fixed speed.
+The 200 MB memory fallback now applies only when the browser exposes neither a save-file picker nor OPFS. Transfer speed depends on the sender's upload connection, the receiver's download connection, Wi-Fi quality, browser performance, and whether a relay is required. BlinkSend performs a short post-verification calibration before enabling new sends, preventing calibration frames from overlapping real file data, and tunes its WebRTC send-buffer target while keeping file messages at or below 64 KiB for compatibility. It does not promise a fixed speed.
 
 ## Deploy your own instance
 
@@ -121,12 +122,12 @@ Set both TURN variables on the BlinkSend server. Configure the same shared secre
 ## Privacy and security
 
 - The room identifier is random and is included in the invite link. Anyone with the link can attempt to join that room, so share it privately and create a new room when needed.
-- After WebRTC connects, BlinkSend displays a six-digit verification code derived from both DTLS certificate fingerprints. Transfer controls remain locked until the user confirms that both screens show the same code.
+- After WebRTC connects, BlinkSend displays a six-digit verification code derived from both DTLS certificate fingerprints. Transfer controls remain locked until the user confirms that both screens show the same code. Nearby discovery does not bypass this verification step.
 - File contents are verified end-to-end with SHA-256 before BlinkSend reports a verified transfer.
 - WebRTC encrypts the data channel in transit. The BlinkSend server forwards connection details, but its normal transfer path does not receive file contents.
 - The receiving browser sees a filename and size before accepting. The signaling server does not need the file bytes or filename to pair devices.
 - A TURN server, if enabled, carries encrypted traffic and can observe connection metadata and traffic volume.
-- Files are not uploaded for later retrieval. Both participants must be online at the same time.
+- Files are not uploaded for later retrieval. Both participants must be online at the same time. Transfer history, local device name, preferences, persistent resume metadata, and any pending PWA share-target payload remain in browser-local storage and are not synced to the BlinkSend server.
 
 BlinkSend includes in-memory per-IP limits for room joins, WebSocket upgrades, QR generation, and ICE credential requests; malformed signaling is rejected and abusive sockets are closed. TURN credentials require a short-lived token issued through a successful room join. These controls are intentionally lightweight and single-process: a serious public deployment should also add reverse-proxy/CDN rate limiting, centralized abuse monitoring, TURN bandwidth quotas, and shared state before horizontal scaling.
 
@@ -146,8 +147,11 @@ BlinkSend includes in-memory per-IP limits for room joins, WebSocket upgrades, Q
 ```bash
 npm ci
 npm test
+npm run bench
 npm start
 ```
+
+`npm test` covers signaling abuse controls, SHA-256 vectors, browser-script syntax, PWA manifest invariants, UTF-8 text framing, path traversal rejection, corruption detection, a 10,000-file manifest, and a sparse chunk bitmap sized for a 5 GiB transfer without allocating 5 GiB of data. `npm run bench` prints repeatable timings for the 5 GiB-equivalent chunk map and 10,000-file manifest operations.
 
 `public/` contains the browser interface and transfer logic. `server.js` serves static files, QR codes, temporary ICE credentials, and WebSocket signaling. `test/` covers the server's room behavior. The project uses no frontend build step.
 

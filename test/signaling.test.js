@@ -42,6 +42,10 @@ test('serves the app and pairs only two browsers, forwarding signaling and peer 
     const first = await connect();
     const firstJoin = next(first); first.send(JSON.stringify({ type: 'join', room }));
     const firstJoined = await firstJoin; assert.equal(firstJoined.type, 'joined'); assert.equal(firstJoined.count, 1); assert.match(firstJoined.iceToken, /^[A-Za-z0-9_-]+$/);
+    const nearRegister=await fetch(`http://127.0.0.1:${port}/nearby/register`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({room,name:'Test laptop',listed:true})});
+    assert.equal(nearRegister.status,200);const nearInfo=await nearRegister.json();assert.match(nearInfo.code,/^[A-Z0-9]{1,8}$/);
+    const nearList=await fetch(`http://127.0.0.1:${port}/nearby`);const nearItems=(await nearList.json()).items;assert.equal(nearItems.length,1);assert.equal(nearItems[0].name,'Test laptop');
+    const nearResolve=await fetch(`http://127.0.0.1:${port}/nearby/resolve`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({code:nearInfo.code})});assert.deepEqual(await nearResolve.json(),{room,name:'Test laptop'});
     const iceResponse = await fetch(`http://127.0.0.1:${port}/ice?token=${encodeURIComponent(firstJoined.iceToken)}`);
     assert.deepEqual((await iceResponse.json()).iceServers, [{ urls: 'stun:stun.l.google.com:19302' }]);
     process.env.TURN_URLS = 'turn:relay.example.org:3478,turns:relay.example.org:5349';

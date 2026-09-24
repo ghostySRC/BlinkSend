@@ -14,9 +14,18 @@ const maxAge = 30 * 60 * 1000;
 const rooms = new Map();
 const iceTokens = new Map();
 const limits = new Map();
-const types = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.svg': 'image/svg+xml' };
+const nearby = new Map();
+const types = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.svg': 'image/svg+xml', '.webmanifest': 'application/manifest+json; charset=utf-8', '.json': 'application/json; charset=utf-8' };
 
 function clientIp(req) { return req.socket?.remoteAddress || 'unknown'; }
+async function readJson(req, limit = 4096) {
+  const chunks=[];let size=0;
+  for await (const chunk of req) { size+=chunk.length;if(size>limit)throw new Error('body too large');chunks.push(chunk); }
+  return JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
+}
+function nearbyBucket(ip){let bucket=nearby.get(ip);if(!bucket){bucket=new Map();nearby.set(ip,bucket);}return bucket;}
+function pruneNearby(ip){const now=Date.now(),bucket=nearby.get(ip);if(!bucket)return;for(const [room,item] of bucket)if(item.expires<=now)bucket.delete(room);if(!bucket.size)nearby.delete(ip);}
+function makeNearbyCode(bucket){let code;do{code=randomBytes(4).toString('base64url').replace(/[-_]/g,'').slice(0,6).toUpperCase();}while([...bucket.values()].some(x=>x.code===code));return code;}
 function allowed(key, max, windowMs) {
   const now = Date.now(); let item = limits.get(key);
   if (!item || now - item.start >= windowMs) { item = { start: now, count: 0 }; limits.set(key, item); }
@@ -42,7 +51,7 @@ function validSignal(type, payload) {
 }
 function securityHeaders(extra = {}) {
   return { 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer', 'Cross-Origin-Resource-Policy': 'same-origin',
-    'Permissions-Policy': 'camera=(), microphone=(), geolocation=()', ...extra };
+    'Permissions-Policy': 'camera=(self), microphone=(), geolocation=()', ...extra };
 }
 
 function iceServers() {
@@ -62,6 +71,26 @@ const server = http.createServer(async (req, res) => {
     if (pathname === '/health') {
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
       res.end(JSON.stringify({ status: 'ok' })); return;
+    }
+    if (pathname === '/nearby' && req.method === 'GET') {
+      const ip=clientIp(req);if(!allowed(`nearby-list:${ip}`,30,60_000)){res.writeHead(429,securityHeaders({'Retry-After':'60'})).end();return;}
+      pruneNearby(ip);const items=[...(nearby.get(ip)?.values()||[])].filter(x=>x.listed).map(({name,code,expires})=>({name,code,expires}));
+      res.writeHead(200,securityHeaders({'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'}));res.end(JSON.stringify({items}));return;
+    }
+    if (pathname === '/nearby/register' && req.method === 'POST') {
+      const ip=clientIp(req);if(!allowed(`nearby-register:${ip}`,20,60_000)){res.writeHead(429,securityHeaders({'Retry-After':'60'})).end();return;}
+      const body=await readJson(req,2048),room=String(body.room||'').toLowerCase(),name=String(body.name||'BlinkSend device').replace(/[\x00-\x1f\x7f]/g,'').trim().slice(0,64),listed=body.listed===true;
+      const live=rooms.get(room);if(!/^[a-f0-9]{32}$/.test(room)||!live||![...live.peers].some(p=>p.ip===ip)){res.writeHead(403,securityHeaders({'Cache-Control':'no-store'})).end();return;}
+      pruneNearby(ip);const bucket=nearbyBucket(ip),old=bucket.get(room),code=old?.code||makeNearbyCode(bucket),expires=Date.now()+5*60_000;bucket.set(room,{room,name:name||'BlinkSend device',code,listed,expires});
+      res.writeHead(200,securityHeaders({'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'}));res.end(JSON.stringify({code,expires}));return;
+    }
+    if (pathname === '/nearby/resolve' && req.method === 'POST') {
+      const ip=clientIp(req);if(!allowed(`nearby-resolve:${ip}`,30,60_000)){res.writeHead(429,securityHeaders({'Retry-After':'60'})).end();return;}
+      const body=await readJson(req,1024),code=String(body.code||'').toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,8);pruneNearby(ip);const item=[...(nearby.get(ip)?.values()||[])].find(x=>x.code===code);
+      if(!item){res.writeHead(404,securityHeaders({'Cache-Control':'no-store'})).end();return;}res.writeHead(200,securityHeaders({'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'}));res.end(JSON.stringify({room:item.room,name:item.name}));return;
+    }
+    if (pathname === '/nearby/unregister' && req.method === 'POST') {
+      const ip=clientIp(req),body=await readJson(req,1024),room=String(body.room||'').toLowerCase();nearby.get(ip)?.delete(room);pruneNearby(ip);res.writeHead(204,securityHeaders({'Cache-Control':'no-store'})).end();return;
     }
     if (pathname === '/ice') {
       const ip = clientIp(req);
@@ -85,7 +114,7 @@ const server = http.createServer(async (req, res) => {
     if (!file.startsWith(publicDir + path.sep)) { res.writeHead(403).end(); return; }
     const info = await stat(file);
     if (!info.isFile()) { res.writeHead(404).end(); return; }
-    res.writeHead(200, securityHeaders({ 'Content-Type': types[path.extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-store', 'Content-Security-Policy': "default-src 'self'; connect-src 'self' wss: ws:; img-src 'self' data:; style-src 'self'; script-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'" }));
+    res.writeHead(200, securityHeaders({ 'Content-Type': types[path.extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-store', 'Content-Security-Policy': "default-src 'self'; connect-src 'self' wss: ws:; img-src 'self' data: blob:; media-src 'self' blob:; style-src 'self'; script-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'" }));
     createReadStream(file).pipe(res);
   } catch { res.writeHead(404).end(); }
 });
@@ -148,6 +177,7 @@ wss.on('connection', (ws, req) => {
 });
 const cleanup = setInterval(() => {
   for (const [token, item] of iceTokens) if (item.expires < Date.now()) iceTokens.delete(token);
+  for (const ip of nearby.keys()) pruneNearby(ip);
   for (const [key, item] of limits) if (Date.now() - item.start > 10 * 60_000) limits.delete(key);
   for (const [id, room] of rooms) {
     if (Date.now() - room.touched > maxAge) {
@@ -159,4 +189,4 @@ const cleanup = setInterval(() => {
 cleanup.unref();
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) server.listen(port, () => console.log(`BlinkSend listening on http://localhost:${port}`));
-export { server, rooms, iceTokens, limits };
+export { server, rooms, iceTokens, limits, nearby };
