@@ -794,10 +794,10 @@
     const entries=state.writeBuffer,start=state.writeBufferStart,total=state.writeBufferBytes;
     state.writeBuffer=[];state.writeBufferBytes=0;state.writeBufferStart=-1;
     if(state.opfsWorker){
-      const workerEntries=entries.map(entry=>({seq:entry.seq,offset:entry.offset,buffer:entry.buffer,byteOffset:entry.byteOffset,byteLength:entry.byteLength}));
-      const transfer=[...new Set(workerEntries.map(entry=>entry.buffer))];
-      await state.opfsWorker.call('write',{entries:workerEntries},transfer);
-      for(const entry of entries)BlinkTransfer.commitChunk(state,entry.seq,entry.byteLength);
+      const merged=new Uint8Array(total);let cursor=0;
+      for(const entry of entries){merged.set(entry.payload,cursor);cursor+=entry.payload.byteLength;}
+      await state.opfsWorker.call('write',{offset:start,buffer:merged.buffer},[merged.buffer]);
+      for(const entry of entries)BlinkTransfer.commitChunk(state,entry.seq,entry.payload.byteLength);
     }else{
       const merged=new Uint8Array(total);let cursor=0;
       for(const entry of entries){merged.set(entry.payload,cursor);cursor+=entry.payload.byteLength;}
@@ -990,9 +990,9 @@
         }
         if(!active.writeBuffer?.length){active.writeBuffer=[];active.writeBufferStart=offset;active.writeBufferBytes=0;}
         if(active.opfsWorker){
-          active.writeBuffer.push({seq,offset,buffer:data,byteOffset:payload.byteOffset,byteLength:payload.byteLength});
+          active.writeBuffer.push({seq,offset,payload});
         }else{
-          const copied=payload.slice();active.writeBuffer.push({seq,offset,payload:copied,byteLength:copied.byteLength});
+          const copied=payload.slice();active.writeBuffer.push({seq,offset,payload:copied});
         }
         active.writeBufferBytes+=payload.byteLength;
         if(active.writeBufferBytes>=target)await flushReceiveWrites(active);
