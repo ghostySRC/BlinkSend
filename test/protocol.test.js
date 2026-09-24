@@ -66,3 +66,27 @@ test('unknown device memory uses a conservative receive window without slowing s
   assert.equal(t.receiveWindow,16*1024*1024);
   assert.ok(t.highWater>=16*1024*1024);
 });
+
+
+test('same-LAN tuning opens the pipeline without bypassing SCTP limits',async()=>{
+  const p=await loadProtocol();
+  const t=p.chooseTuning({throughputBps:12*1024*1024,rttMs:5,deviceMemory:0,cores:6,maxMessageSize:262144,lan:true});
+  assert.equal(t.chunkSize,262140);
+  assert.ok(t.highWater>=48*1024*1024);
+  assert.ok(t.readAhead>=32*1024*1024);
+  assert.ok(t.receiveWindow>=24*1024*1024);
+  assert.ok(t.chunkSize+4<=262144);
+});
+
+test('receiver window grows from actual committed batch speed and shrinks when storage is slow',async()=>{
+  const p=await loadProtocol();
+  let state=p.adaptReceiveWindow({current:16*1024*1024,batchBytes:8*1024*1024,batchMs:100});
+  assert.ok(state.throughputBps>70*1024*1024);
+  assert.equal(state.window,24*1024*1024);
+  state=p.adaptReceiveWindow({current:state.window,previousBps:state.throughputBps,batchBytes:8*1024*1024,batchMs:120});
+  assert.ok(state.window>=32*1024*1024);
+  let slow=p.adaptReceiveWindow({current:32*1024*1024,batchBytes:4*1024*1024,batchMs:2000});
+  slow=p.adaptReceiveWindow({current:slow.window,previousBps:slow.throughputBps,batchBytes:4*1024*1024,batchMs:2000});
+  assert.ok(slow.window<32*1024*1024);
+  assert.ok(slow.window>=8*1024*1024);
+});
