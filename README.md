@@ -1,8 +1,33 @@
-# BlinkSend
+<p align="center"><img src="public/favicon.svg" width="68" alt="BlinkSend logo"></p>
+<h1 align="center">BlinkSend</h1>
+<p align="center"><strong>Move files between computers and phones, straight from the browser.</strong></p>
+<p align="center">No account · No app installation · No file storage on the signaling server</p>
+<p align="center"><a href="#quick-start">Quick start</a> · <a href="#see-it-in-action">See it in action</a> · <a href="#deploy-your-own-instance">Self-host</a> · <a href="#how-it-works">How it works</a></p>
 
-**Send files between computers and phones from a browser.** Open the same room on two devices, accept the incoming file, and transfer it over a WebRTC data channel. No account or app installation is required.
+<p align="center"><img src="docs/media/desktop.webp" width="900" alt="BlinkSend desktop interface with a QR invite and file transfer panel"></p>
+<p align="center"><sub>Open a room, invite another device, and choose files to send.</sub></p>
 
-> **Project status:** early release. The room server and browser transfer flow have automated checks, but transfers across real devices and different networks still need field testing. There is no hosted public instance yet.
+> **Early release:** browser transfers across real devices and networks still need field testing. There is no public hosted instance yet. The GIFs below show the actual interface in a local browser demonstration with a simulated data channel; they do not claim a verified network transfer.
+
+## See it in action
+
+### Pair two devices
+
+<p align="center"><img src="docs/media/pairing.gif" width="820" alt="Animated BlinkSend interface changing from waiting for a device to connected"></p>
+
+Open the room link on a second device or scan the QR code. The connection indicator changes when both browsers join.
+
+### Accept and send a batch
+
+<p align="center"><img src="docs/media/transfer.gif" width="820" alt="Animated BlinkSend interface showing an incoming file, transfer progress, a second file and completion"></p>
+
+Select multiple files, accept each one on the other device, and follow progress and speed in the browser.
+
+### On a phone
+
+<p align="center"><img src="docs/media/mobile.webp" width="300" alt="BlinkSend mobile layout with a QR invite and transfer controls"></p>
+
+The same page adapts to smaller screens. A public HTTPS deployment is required to connect a phone to a computer outside this local preview.
 
 ## Features
 
