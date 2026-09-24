@@ -789,14 +789,15 @@
     if(!active||active.direction!=='send')return;
     const size=active.chunkSize||defaultChunkSize,total=Math.ceil(active.file.size/size);
     if(!BlinkSecurity.validRanges(ranges,total))return;
-    active.fullHash=await BlinkTransfer.hashWholeFile(active.file,size);active.hasher=null;active.sendRanges=ranges.map(r=>[r[0],r[1]]);active.rangeIndex=0;active.rangeSeq=active.sendRanges[0]?.[0]??total;
+    ensureSenderHash(active).catch(()=>{});
+    active.sendRanges=ranges.map(r=>[r[0],r[1]]);active.rangeIndex=0;active.rangeSeq=active.sendRanges[0]?.[0]??total;
     let missing=0;for(const [s,e] of active.sendRanges){const start=s*size,end=Math.min(active.file.size,(e+1)*size);missing+=Math.max(0,end-start);}
     active.sent=Math.max(0,active.file.size-missing);active.remoteReceived=Math.max(active.remoteReceived||0,active.sent);active.remoteWindow=active.remoteWindow||8*1024*1024;active.paused=false;active.stage='resuming';setTransferBanner(tr('resumeBanner',{percent:Math.floor((active.sent/Math.max(1,active.file.size))*100)}),'ok');progress(active.sent,active.file.size,active.started,'sending');pump(active.id);
   }
   async function resumeOutgoing(nextChunk) {
     if (!active || active.direction !== 'send' || !Number.isSafeInteger(nextChunk) || nextChunk < 0) return;
     const size=active.chunkSize||defaultChunkSize; const offset = Math.min(active.file.size, nextChunk * size); active.sent = offset; active.remoteReceived=Math.max(active.remoteReceived||0,offset);active.remoteWindow=active.remoteWindow||8*1024*1024; active.nextChunk = nextChunk;
-    active.hasher = await BlinkTransfer.hashPrefix(active.file, offset, size); active.fullHash=''; active.sendRanges=null; active.paused = false; active.stage = 'resuming';setTransferBanner(tr('resumeBanner',{percent:Math.floor((offset/Math.max(1,active.file.size))*100)}),'ok');
+    ensureSenderHash(active).catch(()=>{});active.sendRanges=null; active.paused = false; active.stage = 'resuming';setTransferBanner(tr('resumeBanner',{percent:Math.floor((offset/Math.max(1,active.file.size))*100)}),'ok');
     progress(offset, active.file.size, active.started, 'sending'); pump(active.id);
   }
   async function sendFile(entry) {
@@ -903,12 +904,15 @@
             progress(active.sent,file.size,active.started,'sending');
           }
         }
-        if(active?.id===id&&!active.paused){channel.send(JSON.stringify({type:'complete',id,sha256:active.fullHash}));active.stage='finishing';progressState=null;renderTransfer();}return;
+        if(active?.id===id&&!active.paused){
+          const sha256=await ensureSenderHash(active);
+          if(active?.id!==id||active.paused||channel?.readyState!=='open')return;
+          channel.send(JSON.stringify({type:'complete',id,sha256}));active.stage='finishing';progressState=null;renderTransfer();
+        }return;
       }
       while(active?.id===id&&!active.paused&&active.sent<file.size){
         await waitForSendCapacity(active.highWater||tuning.highWater,0);
         const readStart=active.sent,readEnd=Math.min(file.size,readStart+readAhead),buffer=await file.slice(readStart,readEnd).arrayBuffer(),view=new Uint8Array(buffer);
-        active.hasher.update(view);
         let local=0;
         while(local<view.byteLength){
           if(active?.id!==id||active.paused)return;
@@ -918,7 +922,11 @@
           progress(active.sent,file.size,active.started,'sending');
         }
       }
-      if(active?.id===id&&!active.paused){channel.send(JSON.stringify({type:'complete',id,sha256:BlinkTransfer.finalHash(active)}));active.stage='finishing';progressState=null;renderTransfer();}
+      if(active?.id===id&&!active.paused){
+        const sha256=await ensureSenderHash(active);
+        if(active?.id!==id||active.paused||channel?.readyState!=='open')return;
+        channel.send(JSON.stringify({type:'complete',id,sha256}));active.stage='finishing';progressState=null;renderTransfer();
+      }
     } catch {if(active?.id===id){pauseTransfer();status('paused');}}
   }
   async function control(raw) {
