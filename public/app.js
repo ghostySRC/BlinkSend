@@ -227,7 +227,7 @@
   const supportsOpfs = !!navigator.storage?.getDirectory;
   const format = bytes => bytes < 1024 ? `${bytes} B` : bytes < 1048576 ? `${(bytes / 1024).toFixed(1)} KB` : bytes < 1073741824 ? `${(bytes / 1048576).toFixed(1)} MB` : `${(bytes / 1073741824).toFixed(2)} GB`;
   let socket, pc, channel, pending, active, incomingQueue = Promise.resolve(), signalQueue = Promise.resolve(), connectTimer, iceToken = '';
-  let readyLabel = 'ready', peerVerified = false;
+  let readyLabel = 'ready', peerVerified = false, verificationCode = '';
   let outgoing = [], batchTotal = 0, batchDone = 0;
   let room = location.hash.slice(1).toLowerCase();
   if (!/^[a-f0-9]{32}$/.test(room)) { room = [...crypto.getRandomValues(new Uint8Array(16))].map(v => v.toString(16).padStart(2,'0')).join(''); history.replaceState(null, '', `${location.pathname}${location.search}#${room}`); }
@@ -255,7 +255,7 @@
     clearTimeout(connectTimer);
     pauseTransfer();
     pending = null; els.incoming.hidden = true;
-    peerVerified = false; els['verify-peer'].hidden = true;
+    peerVerified = false; verificationCode = ''; els['verify-peer'].hidden = true;
     channel?.close(); pc?.close(); channel = null; pc = null;
     status('waiting');
   }
@@ -269,7 +269,9 @@
     const material = [local, remote].sort().join(':');
     const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(material)));
     const value = (((digest[0] * 0x1000000) + (digest[1] << 16) + (digest[2] << 8) + digest[3]) >>> 0) % 1000000;
-    const code = String(value).padStart(6, '0'); els['verify-code'].textContent = `${code.slice(0,3)} ${code.slice(3)}`;
+    const code = String(value).padStart(6, '0'), display = `${code.slice(0,3)} ${code.slice(3)}`;
+    if (display === verificationCode && peerVerified) return;
+    verificationCode = display; els['verify-code'].textContent = display;
     els['verify-peer'].hidden = false; peerVerified = false; status('verifyStatus', false);
   }
   async function connectionPath() {
@@ -314,11 +316,7 @@
     ch.bufferedAmountLowThreshold = 2 * 1024 * 1024;
     ch.onopen = () => {
       clearTimeout(connectTimer); connectionPath(); notice();
-      if (active) {
-        active.paused = true;
-        if (active.direction === 'receive') ch.send(JSON.stringify({ type: 'resume', id: active.id, nextChunk: active.nextChunk || 0, size: active.size }));
-        else { active.stage = 'resuming'; renderTransfer(); }
-      }
+      if (active) { active.paused = true; active.stage = 'resuming'; renderTransfer(); }
     };
     ch.onclose = () => { pauseTransfer(); status(active ? 'paused' : 'peerLeft'); };
     ch.onmessage = e => {
@@ -434,7 +432,7 @@
       status('incomingPrompt');
     }
     if (msg.type === 'accept' && active?.id === msg.id && active.direction === 'send') { active.accepted = true; active.paused = false; pump(msg.id); }
-    if (msg.type === 'resume' && active?.id === msg.id && active.direction === 'send' && Number.isSafeInteger(msg.nextChunk) && msg.nextChunk >= 0) {
+    if (msg.type === 'resume' && peerVerified && active?.id === msg.id && active.direction === 'send' && Number.isSafeInteger(msg.nextChunk) && msg.nextChunk >= 0) {
       const offset = Math.min(active.file.size, msg.nextChunk * chunkSize); active.sent = offset; active.nextChunk = msg.nextChunk; active.hasher = await hashPrefix(active.file, offset); active.paused = false; active.stage = 'resuming'; progress(offset, active.file.size, active.started, 'sending'); pump(msg.id);
     }
     if (msg.type === 'decline' && active?.id === msg.id && active.direction === 'send') finishOutgoing('declined');
