@@ -1,7 +1,8 @@
 (() => {
   const KiB=1024, MiB=1024*1024;
-  function chooseTuning({throughputBps=0,rttMs=0,deviceMemory=4,cores=4,maxMessageSize=0}={}){
-    const weak=(deviceMemory&&deviceMemory<=2)||(cores&&cores<=2);
+  function chooseTuning({throughputBps=0,rttMs=0,deviceMemory=0,cores=4,maxMessageSize=0}={}){
+    const weak=(deviceMemory>0&&deviceMemory<=2)||(cores&&cores<=2);
+    const unknownMemory=!deviceMemory;
     const negotiated=Number.isFinite(maxMessageSize)&&maxMessageSize>8?maxMessageSize-4:64*KiB;
     const chunkCap=Math.min(256*KiB,negotiated);
     let preferred=weak?64*KiB:throughputBps>=24*MiB?256*KiB:throughputBps>=6*MiB?192*KiB:128*KiB;
@@ -13,7 +14,7 @@
     if(rttMs>180)highWater=Math.min(highWater,12*MiB);
     const readAhead=weak?2*MiB:throughputBps>20*MiB?16*MiB:8*MiB;
     const writeBatch=weak?MiB:throughputBps>10*MiB?8*MiB:4*MiB;
-    let receiveWindow=weak?8*MiB:throughputBps>25*MiB?48*MiB:throughputBps>8*MiB?32*MiB:24*MiB;
+    let receiveWindow=weak?8*MiB:unknownMemory?16*MiB:throughputBps>25*MiB?48*MiB:throughputBps>8*MiB?32*MiB:24*MiB;
     if(rttMs>180)receiveWindow=Math.min(receiveWindow,16*MiB);
     return {
       chunkSize,highWater,lowWater:Math.max(MiB,Math.floor(highWater/4)),
