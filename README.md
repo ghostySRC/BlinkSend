@@ -25,7 +25,7 @@
   <img src="docs/media/pairing.gif" width="720" alt="Animated BlinkSend pairing walkthrough with manual code and peer verification">
 </p>
 
-The pairing demo is recorded from two real BlinkSend Chromium sessions using the actual signaling and verification flow. The only added documentation layer is the oversized cursor, eased movement, click ripple, and short action label so the interaction stays readable on GitHub.
+The pairing demo is recorded from two real BlinkSend Chromium sessions using the actual signaling and verification flow. A permanently visible high-contrast cursor moves to each control, pauses on hover, visibly presses, and produces a click ripple before the real action occurs.
 
 ### Send, watch progress, verify
 
@@ -33,7 +33,7 @@ The pairing demo is recorded from two real BlinkSend Chromium sessions using the
   <img src="docs/media/transfer.gif" width="720" alt="Animated BlinkSend transfer walkthrough with speed, ETA, progress and SHA-256 verification">
 </p>
 
-The transfer demo is also captured from the running app: two real browser sessions pair, transfer a real local test file over BlinkSend's WebRTC path, display the live progress/speed/ETA UI, and reach the SHA-256 verified completion state. The test filename and measured speed are demonstration data, not benchmark claims.
+The transfer demo is also captured from the running app: two real browser sessions pair, transfer a real local test file over BlinkSend's WebRTC path, display the live progress/speed/ETA UI, reach SHA-256 verified completion, and show the connected **Send another** flow. The test filename and measured speed are demonstration data, not benchmark claims.
 
 The README media is reproducible: `scripts/capture-readme-media.mjs` launches the real BlinkSend server and Chromium, then the on-demand **Refresh README media** workflow captures and commits fresh browser screenshots plus 30 FPS GIFs after UI changes.
 
