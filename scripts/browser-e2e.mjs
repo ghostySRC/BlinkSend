@@ -59,7 +59,7 @@ try{
   await Promise.all([sender.locator('#verify-match').click(),receiver.locator('#verify-match').click()]);
   await waitFor(()=>sender.locator('#send-text').isEnabled(),'verified send controls',25000);
 
-  const perfMiB=browserName==='chromium'?224:64;
+  const perfMiB=browserName==='chromium'?512:128;
   tempDir=await mkdtemp(join(tmpdir(),'blinksend-e2e-'));
   const perfPath=join(tempDir,'throughput.bin'),fh=await open(perfPath,'w'),block=Buffer.alloc(1024*1024,0x5a);
   try{for(let i=0;i<perfMiB;i++)await fh.write(block);}finally{await fh.close();}
@@ -78,7 +78,7 @@ try{
     throw new Error(error.message+' | states='+JSON.stringify(state)+' | browserErrors='+JSON.stringify(browserErrors.slice(-12)));
   }
   const perfSeconds=(Date.now()-perfStart)/1000;
-  if(perfSeconds>120)throw new Error(perfMiB+' MiB binary transfer exceeded smoke-test budget');
+  if(perfSeconds>180)throw new Error(perfMiB+' MiB binary transfer exceeded smoke-test budget');
 
   // Reuse the verified session for a second file. This catches leaked/terminated
   // hash workers, stale receive workers, and post-transfer state bugs.
