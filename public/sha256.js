@@ -21,11 +21,19 @@
       const data = input instanceof Uint8Array ? input : new Uint8Array(input);
       this.bytesHashed += data.length;
       let pos = 0;
-      while (pos < data.length) {
-        const take = Math.min(64 - this.bufferLength, data.length - pos);
-        this.buffer.set(data.subarray(pos, pos + take), this.bufferLength);
-        this.bufferLength += take; pos += take;
+      if (this.bufferLength) {
+        const take = Math.min(64 - this.bufferLength, data.length);
+        this.buffer.set(data.subarray(0, take), this.bufferLength);
+        this.bufferLength += take; pos = take;
         if (this.bufferLength === 64) { this._compress(this.buffer); this.bufferLength = 0; }
+      }
+      while (pos + 64 <= data.length) {
+        this._compress(data.subarray(pos, pos + 64));
+        pos += 64;
+      }
+      if (pos < data.length) {
+        const tail=data.subarray(pos);
+        this.buffer.set(tail,0);this.bufferLength=tail.length;
       }
       return this;
     }
