@@ -211,6 +211,10 @@ Security- and recovery-sensitive primitives are separated from the UI controller
 
 BlinkSend treats the other browser as untrusted. Before allocating transfer state or creating destination structures, the client applies explicit limits to control-message size, file metadata, batch counts and bytes, path depth/length, text framing, resume ranges, queue length, and total chunk count. These limits are defined in `public/security.js` and covered by hostile-input tests. File/folder/text/benchmark initiation is also rejected until mutual peer verification completes; they are safety bounds rather than advertised performance targets.
 
+## Browser compatibility
+
+Automated pairing/verification/WebRTC clipboard E2E runs against Chromium, Firefox, and WebKit on every pull request. Platform-specific file/storage APIs still require real-device validation; see [`COMPATIBILITY.md`](COMPATIBILITY.md) for the capability and manual-test matrix.
+
 ## Development
 
 Project/runtime documentation is kept in `README.md` and `SECURITY.md` so the repository stays focused on BlinkSend itself.
@@ -220,6 +224,7 @@ npm ci
 npm test
 npm run bench
 npm run loadtest
+# Browser E2E is executed by .github/workflows/browser-e2e.yml
 npm start
 ```
 
