@@ -29,7 +29,7 @@
     <aside id="settings-panel" class="settings-panel" hidden>
       <div class="settings-head"><strong data-i18n="settings">Settings</strong><button id="settings-close" type="button" class="text-button" data-i18n="close">Close</button></div>
       <label class="setting-field"><span data-i18n="deviceName">Device name</span><input id="device-name" maxlength="64" autocomplete="off" placeholder="My device" data-i18n-placeholder="deviceNamePlaceholder"></label>
-      <label class="setting-check"><input id="notify-complete" type="checkbox"><span data-i18n="completionFeedback">Sound / vibration on completion</span></label>
+      <label class="setting-check"><input id="notify-complete" type="checkbox"><span data-i18n="completionFeedback">Sound / vibration on completion</span></label><label class="setting-check"><input id="nearby-discovery" type="checkbox"><span data-i18n="nearbyDiscovery">Make this Send room discoverable nearby for 5 minutes</span></label><p id="nearby-code" class="nearby-code"></p>
       <div class="history-head"><strong data-i18n="history">Transfer history</strong><button id="clear-history" type="button" class="text-button" data-i18n="clearHistory">Clear</button></div>
       <div id="history-list" class="history-list"><p class="hint" data-i18n="noHistory">No transfers yet.</p></div>
       <p class="hint" data-i18n="historyPrivate">Stored only in this browser.</p>
@@ -60,6 +60,8 @@
           <input id="join-link" type="url" inputmode="url" autocomplete="off" data-i18n-placeholder="invitePlaceholder" placeholder="https://…/#room">
           <button id="join-room" type="button" class="button primary" data-i18n="join">Join</button>
         </div>
+        <div class="receive-tools"><button id="scan-qr" type="button" class="button secondary" data-i18n="scanQr">Scan QR</button><button id="find-nearby" type="button" class="button secondary" data-i18n="findNearby">Find nearby</button></div>
+        <div id="nearby-results" class="nearby-results" hidden></div>
         <button id="join-back" type="button" class="text-button" data-i18n="back">Back</button>
       </section>
 
@@ -131,5 +133,6 @@
       <div class="modal-actions"><button id="decline" type="button" class="button secondary" data-i18n="decline">Decline</button><button id="accept" type="button" class="button primary" data-i18n="saveFile">Save file</button></div>
     </div>
   </div>
+  <div id="qr-scanner" class="modal-backdrop" hidden><div class="modal scanner-modal" role="dialog" aria-modal="true" aria-labelledby="scanner-title"><h2 id="scanner-title" data-i18n="scanQr">Scan QR</h2><video id="scanner-video" playsinline muted></video><p id="scanner-help" class="hint" data-i18n="scannerHelp">Point the camera at a BlinkSend QR code.</p><div class="modal-actions"><button id="scanner-close" type="button" class="button secondary" data-i18n="close">Close</button></div></div></div>
 </body>
 </html>

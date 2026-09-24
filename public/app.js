@@ -1,6 +1,6 @@
 (() => {
   const $ = id => document.getElementById(id);
-  const els = Object.fromEntries(['install-app','settings-toggle','settings-panel','settings-close','device-name','notify-complete','history-list','clear-history','mode-picker','mode-send','mode-receive','receive-join','join-link','join-room','join-back','resume-card','resume-detail','resume-transfer','discard-resume','transfer-workspace','invite-card','transfer-card','send-controls','receive-wait','qr','copy','new-room','status','status-dot','peer-name','connection-quality','verify-peer','verify-code','verify-match','file','folder','choose-folder','share-text','send-text','received-text','received-content','received-link','copy-received','share-received','share-last-file','drop','transfer-info','batch-summary','file-name','file-size','progress','progress-text','cancel','queue-status','notice','incoming','incoming-title','incoming-detail','save-note','accept','decline'].map(id => [id, $(id)]));
+  const els = Object.fromEntries(['install-app','settings-toggle','settings-panel','settings-close','device-name','notify-complete','nearby-discovery','nearby-code','history-list','clear-history','mode-picker','mode-send','mode-receive','receive-join','join-link','join-room','join-back','scan-qr','find-nearby','nearby-results','qr-scanner','scanner-video','scanner-help','scanner-close','resume-card','resume-detail','resume-transfer','discard-resume','transfer-workspace','invite-card','transfer-card','send-controls','receive-wait','qr','copy','new-room','status','status-dot','peer-name','connection-quality','verify-peer','verify-code','verify-match','file','folder','choose-folder','share-text','send-text','received-text','received-content','received-link','copy-received','share-received','share-last-file','drop','transfer-info','batch-summary','file-name','file-size','progress','progress-text','cancel','queue-status','notice','incoming','incoming-title','incoming-detail','save-note','accept','decline'].map(id => [id, $(id)]));
   const translations = {
   "en": {
     "language": "Language",
@@ -54,6 +54,14 @@
     "deviceName": "Device name",
     "deviceNamePlaceholder": "My device",
     "completionFeedback": "Sound / vibration on completion",
+    "nearbyDiscovery": "Make this Send room discoverable nearby for 5 minutes",
+    "nearbyCode": "Nearby code: %code%",
+    "scanQr": "Scan QR",
+    "findNearby": "Find nearby",
+    "scannerHelp": "Point the camera at a BlinkSend QR code.",
+    "scannerUnsupported": "QR scanning is not supported in this browser. Use the phone camera app or paste the invite link.",
+    "cameraDenied": "Camera access was not available.",
+    "noNearby": "No discoverable BlinkSend rooms found on this network.",
     "history": "Transfer history",
     "clearHistory": "Clear",
     "noHistory": "No transfers yet.",
@@ -183,6 +191,14 @@
     "deviceName": "Enhetsnamn",
     "deviceNamePlaceholder": "Min enhet",
     "completionFeedback": "Ljud / vibration när överföringen är klar",
+    "nearbyDiscovery": "Gör det här Skicka-rummet synligt i närheten i 5 minuter",
+    "nearbyCode": "Kod i närheten: %code%",
+    "scanQr": "Skanna QR",
+    "findNearby": "Hitta i närheten",
+    "scannerHelp": "Rikta kameran mot en BlinkSend-QR-kod.",
+    "scannerUnsupported": "QR-skanning stöds inte i den här webbläsaren. Använd mobilens kameraapp eller klistra in länken.",
+    "cameraDenied": "Kameran kunde inte användas.",
+    "noNearby": "Inga synliga BlinkSend-rum hittades på det här nätverket.",
     "history": "Överföringshistorik",
     "clearHistory": "Rensa",
     "noHistory": "Inga överföringar än.",
@@ -355,6 +371,7 @@
   const sanitizeDeviceName = value => String(value || '').replace(/[\x00-\x1f\x7f]/g,'').trim().slice(0,64);
   let deviceName = sanitizeDeviceName(readSetting('blinksend-device-name')) || 'BlinkSend device';
   let completionFeedback = readSetting('blinksend-completion-feedback') === '1';
+  let nearbyDiscovery = readSetting('blinksend-nearby') === '1', scannerStream=null, scannerLoop=0;
   async function renderHistory() {
     if (!window.BlinkStore?.listHistory) return;
     try {
@@ -488,7 +505,7 @@
     socket.onmessage = e => { signalQueue = signalQueue.then(async () => {
       let msg; try { msg = JSON.parse(e.data); } catch { return; }
       try {
-        if (msg.type === 'joined') { iceToken = typeof msg.iceToken === 'string' ? msg.iceToken : ''; status(msg.count === 1 ? 'waiting' : 'connecting'); }
+        if (msg.type === 'joined') { iceToken = typeof msg.iceToken === 'string' ? msg.iceToken : ''; status(msg.count === 1 ? 'waiting' : 'connecting'); if(mode==='send'&&nearbyDiscovery)registerNearby(); }
         if (msg.type === 'full') { status('roomFull'); notice('roomFullHelp'); }
         if (msg.type === 'peer-left') resetPeer();
         if (msg.type === 'peer-joined') { isOfferer=true; await makePeer(); setupChannel(pc.createDataChannel('files', { ordered: true })); await pc.setLocalDescription(await pc.createOffer()); signal('offer', pc.localDescription.toJSON()); status('connecting'); }
@@ -978,11 +995,36 @@
   }
   els['resume-transfer'].onclick = restoreSession;
   els['discard-resume'].onclick = async () => { await clearPersistent(); await clearBatchContext(); resumeSession=null; incomingBatch=null; els['resume-card'].hidden=true; };
+  async function registerNearby(){
+    if(!room||mode!=='send'||!nearbyDiscovery)return;
+    try{const r=await fetch('/nearby/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({room,name:deviceName,listed:true})});if(r.ok){const data=await r.json();els['nearby-code'].textContent=tr('nearbyCode',{code:data.code});}}catch{}
+  }
+  async function unregisterNearby(){
+    els['nearby-code'].textContent='';if(!room)return;try{await fetch('/nearby/unregister',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({room})});}catch{}
+  }
+  async function findNearby(){
+    els['nearby-results'].hidden=false;els['nearby-results'].textContent='';
+    try{const r=await fetch('/nearby',{cache:'no-store'}),data=r.ok?await r.json():{items:[]};if(!data.items?.length){els['nearby-results'].textContent=tr('noNearby');return;}
+      for(const item of data.items){const row=document.createElement('div');row.className='nearby-result';const label=document.createElement('span');label.textContent=item.name||'BlinkSend device';const button=document.createElement('button');button.className='button secondary';button.textContent=item.code;button.onclick=async()=>{const rr=await fetch('/nearby/resolve',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:item.code})});if(rr.ok){const found=await rr.json();stopScanner();startReceiveRoom(found.room);}};row.append(label,button);els['nearby-results'].append(row);}
+    }catch{els['nearby-results'].textContent=tr('noNearby');}
+  }
+  function stopScanner(){cancelAnimationFrame(scannerLoop);scannerLoop=0;if(scannerStream){for(const track of scannerStream.getTracks())track.stop();scannerStream=null;}els['qr-scanner'].hidden=true;els['scanner-video'].srcObject=null;}
+  async function startScanner(){
+    if(!('BarcodeDetector' in window)||!navigator.mediaDevices?.getUserMedia){notice('scannerUnsupported');return;}
+    try{const supported=await BarcodeDetector.getSupportedFormats?.();if(supported&&!supported.includes('qr_code')){notice('scannerUnsupported');return;}scannerStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}},audio:false});els['scanner-video'].srcObject=scannerStream;await els['scanner-video'].play();els['qr-scanner'].hidden=false;const detector=new BarcodeDetector({formats:['qr_code']});
+      const tick=async()=>{if(!scannerStream)return;try{const codes=await detector.detect(els['scanner-video']);for(const code of codes){try{const u=new URL(code.rawValue),id=u.hash.slice(1).toLowerCase();if(u.origin===location.origin&&roomPattern.test(id)){stopScanner();startReceiveRoom(id);return;}}catch{}}}catch{}scannerLoop=requestAnimationFrame(tick);};tick();
+    }catch{stopScanner();notice('cameraDenied');}
+  }
   els['settings-toggle'].onclick=()=>{els['settings-panel'].hidden=!els['settings-panel'].hidden;if(!els['settings-panel'].hidden)renderHistory();};
   els['settings-close'].onclick=()=>{els['settings-panel'].hidden=true;};
   els['device-name'].value=deviceName;
-  els['device-name'].onchange=()=>{deviceName=sanitizeDeviceName(els['device-name'].value)||'BlinkSend device';els['device-name'].value=deviceName;saveSetting('blinksend-device-name',deviceName);if(channel?.readyState==='open')channel.send(JSON.stringify({type:'hello',name:deviceName}));};
+  els['device-name'].onchange=()=>{deviceName=sanitizeDeviceName(els['device-name'].value)||'BlinkSend device';els['device-name'].value=deviceName;saveSetting('blinksend-device-name',deviceName);if(channel?.readyState==='open')channel.send(JSON.stringify({type:'hello',name:deviceName}));if(nearbyDiscovery)registerNearby();};
   els['notify-complete'].checked=completionFeedback;
+  els['nearby-discovery'].checked=nearbyDiscovery;
+  els['nearby-discovery'].onchange=async()=>{nearbyDiscovery=els['nearby-discovery'].checked;saveSetting('blinksend-nearby',nearbyDiscovery?'1':'0');if(nearbyDiscovery)await registerNearby();else await unregisterNearby();};
+  els['find-nearby'].onclick=findNearby;
+  els['scan-qr'].onclick=startScanner;
+  els['scanner-close'].onclick=stopScanner;
   els['notify-complete'].onchange=()=>{completionFeedback=els['notify-complete'].checked;saveSetting('blinksend-completion-feedback',completionFeedback?'1':'0');};
   els['clear-history'].onclick=async()=>{try{await BlinkStore?.clearHistory?.();}catch{}await renderHistory();};
   if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});
