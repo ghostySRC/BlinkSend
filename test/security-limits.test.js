@@ -38,3 +38,12 @@ test('accepted batch manifest cannot be exceeded or completed early',async()=>{
 });
 
 test('negotiated high-throughput chunks stay bounded',async()=>{const s=await load();assert.equal(s.LIMITS.maxChunkBytes,256*1024);assert.equal(s.chunkCount(256*1024,256*1024),1);});
+
+test('receiver flow updates are bounded and cannot claim impossible progress',async()=>{
+  const s=await load(),size=1024*1024*1024;
+  assert.equal(s.validFlowWindow(24*1024*1024),true);
+  assert.equal(s.validFlowWindow(1024),false);
+  assert.equal(s.validFlowWindow(s.LIMITS.flowWindowMax+1),false);
+  assert.equal(s.validFlowUpdate({id:'x',received:512*1024*1024,windowBytes:24*1024*1024},size),true);
+  assert.equal(s.validFlowUpdate({id:'x',received:size+1,windowBytes:24*1024*1024},size),false);
+});

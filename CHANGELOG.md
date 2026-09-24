@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.4.0-beta.4 — sustained multi-gigabyte transfer stability
+
+### Throughput and stability
+- Add receiver-credit flow control: the destination periodically reports bytes actually committed/processed and a bounded receive window, so the sender cannot flood a slower browser even when the WebRTC send buffer still looks healthy.
+- Use adaptive 8–48 MiB receiver windows with frequent credit acknowledgements to keep fast links full without allowing unbounded receive backlog.
+- Expand fast-link payload selection to 256 KiB when the negotiated SCTP limit safely permits it.
+- Increase fast-device sender read-ahead to 16 MiB and receiver contiguous write batches up to 8 MiB.
+- Move durable resume checkpoints to 128 MiB intervals to reduce close/reopen overhead on very large transfers while preserving reload recovery.
+- Carry receiver credit across resume/reconnect and reset it safely during verification retries.
+- Add validation for flow-control messages so a peer cannot advertise impossible progress or abusive receive windows.
+- Expand cross-browser E2E binary coverage from 8 MiB to 32 MiB in Chromium, Firefox, and WebKit.
+
 ## 0.4.0-beta.3 — high-throughput transfer engine
 
 ### Performance

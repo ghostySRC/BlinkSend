@@ -5,6 +5,7 @@
     batchNameChars:255, batchFiles:10000, batchBytes:512*GiB, fileBytes:256*GiB,
     minChunkBytes:16*KiB, maxChunkBytes:256*KiB, maxChunks:4_194_304,
     resumeRanges:128, textBytes:256*KiB, textParts:64, textPartBytes:32*KiB,
+    flowWindowMin:2*MiB, flowWindowMax:128*MiB,
     queueFiles:10000, directoryDepth:128, controlJsonBytes:512*KiB
   });
   const utf8=value=>new TextEncoder().encode(String(value??'')).byteLength;
@@ -43,6 +44,11 @@
     return completedCount<batch.count&&completedBytes+file.size<=batch.totalSize;
   }
   function batchCompleteIsConsistent(batch){return !!batch&&Number(batch.completedCount)===Number(batch.count)&&Number(batch.completedBytes)===Number(batch.totalSize);}
+  function validFlowWindow(value){return Number.isSafeInteger(value)&&value>=LIMITS.flowWindowMin&&value<=LIMITS.flowWindowMax;}
+  function validFlowUpdate(msg,fileSize){
+    return !!msg&&validId(msg.id)&&Number.isSafeInteger(fileSize)&&fileSize>=0&&
+      Number.isSafeInteger(msg.received)&&msg.received>=0&&msg.received<=fileSize&&validFlowWindow(msg.windowBytes);
+  }
   function validTextStart(msg){return !!msg&&validId(msg.id)&&Number.isSafeInteger(msg.parts)&&msg.parts>=1&&msg.parts<=LIMITS.textParts&&Number.isSafeInteger(msg.bytes)&&msg.bytes>=0&&msg.bytes<=LIMITS.textBytes;}
   function validTextPart(msg,state){return !!state&&!!msg&&msg.id===state.id&&Number.isSafeInteger(msg.index)&&msg.index>=0&&msg.index<state.parts.length&&typeof msg.text==='string'&&utf8(msg.text)<=LIMITS.textPartBytes;}
   function controlJsonWithinLimit(raw){return typeof raw==='string'&&utf8(raw)<=LIMITS.controlJsonBytes;}
@@ -66,5 +72,5 @@
     }
     return true;
   }
-  window.BlinkSecurity={LIMITS,utf8,validId,safeName,safeRelativePath,chunkCount,validFileRequest,validBatchRequest,batchAllowsFile,batchCompleteIsConsistent,validRanges,validTextStart,validTextPart,controlJsonWithinLimit,isUint8,validPersistedEntry,validPersistedSession};
+  window.BlinkSecurity={LIMITS,utf8,validId,safeName,safeRelativePath,chunkCount,validFileRequest,validBatchRequest,batchAllowsFile,batchCompleteIsConsistent,validRanges,validFlowWindow,validFlowUpdate,validTextStart,validTextPart,controlJsonWithinLimit,isUint8,validPersistedEntry,validPersistedSession};
 })();

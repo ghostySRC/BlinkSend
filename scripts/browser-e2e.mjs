@@ -52,13 +52,13 @@ try{
   await waitFor(()=>sender.locator('#send-text').isEnabled(),'verified send controls',25000);
 
   const perfStart=Date.now();
-  const payload=Buffer.alloc(8*1024*1024,0x5a);
+  const payload=Buffer.alloc(32*1024*1024,0x5a);
   await sender.locator('#file').setInputFiles({name:'throughput.bin',mimeType:'application/octet-stream',buffer:payload});
   await waitFor(()=>receiver.locator('#incoming').isVisible(),'binary transfer prompt',10000);
   await receiver.locator('#accept').click();
   await waitFor(()=>sender.locator('#post-transfer').isVisible(),'binary transfer completion',30000);
   const perfSeconds=(Date.now()-perfStart)/1000;
-  if(perfSeconds>30)throw new Error('8 MiB binary transfer exceeded smoke-test budget');
+  if(perfSeconds>45)throw new Error('32 MiB binary transfer exceeded smoke-test budget');
 
   const message=`BlinkSend ${browserName} WebRTC check ${Date.now()}`;
   await sender.locator('#share-text').fill(message);
@@ -82,7 +82,7 @@ try{
   const rtlContext=await browser.newContext({locale:'ar-SA'});const rtl=await rtlContext.newPage();await rtl.goto(base,{waitUntil:'domcontentloaded'});
   if(await rtl.locator('#language').inputValue()!=='ar'||await rtl.locator('html').getAttribute('dir')!=='rtl')throw new Error('Arabic locale/RTL did not apply');await rtlContext.close();
 
-  console.log(JSON.stringify({browser:browserName,pairingCode:true,verificationCode:true,webrtcText:true,binaryFile:true,binaryMiBPerSec:Number((8/perfSeconds).toFixed(2)),mobileLayout:true,browserLocale:true,rtl:true},null,2));
+  console.log(JSON.stringify({browser:browserName,pairingCode:true,verificationCode:true,webrtcText:true,binaryFile:true,binaryMiBPerSec:Number((32/perfSeconds).toFixed(2)),mobileLayout:true,browserLocale:true,rtl:true},null,2));
   await Promise.all([senderContext.close(),receiverContext.close()]);
 }finally{
   await browser?.close().catch(()=>{});
