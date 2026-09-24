@@ -31,6 +31,11 @@ try{
     try { Object.defineProperty(window,'showSaveFilePicker',{value:undefined,configurable:true}); } catch {}
   });
   const sender=await senderContext.newPage(),receiver=await receiverContext.newPage();
+  const browserErrors=[];
+  for(const [label,page] of [['sender',sender],['receiver',receiver]]){
+    page.on('pageerror',error=>browserErrors.push(label+' pageerror: '+error.message));
+    page.on('console',msg=>{if(msg.type()==='error')browserErrors.push(label+' console: '+msg.text());});
+  }
   await Promise.all([sender.goto(base,{waitUntil:'domcontentloaded'}),receiver.goto(base,{waitUntil:'domcontentloaded'})]);
 
   await sender.locator('#mode-send').click();
@@ -62,7 +67,16 @@ try{
   await sender.locator('#file').setInputFiles(perfPath);
   await waitFor(()=>receiver.locator('#incoming').isVisible(),'binary transfer prompt',10000);
   await receiver.locator('#accept').click();
-  await waitFor(()=>sender.locator('#post-transfer').isVisible(),'binary transfer completion',120000);
+  try{await waitFor(()=>sender.locator('#post-transfer').isVisible(),'binary transfer completion',120000);}
+  catch(error){
+    const state=await Promise.all([sender,receiver].map(async page=>({
+      status:await page.locator('#status').textContent().catch(()=>null),
+      progress:await page.locator('#progress-text').textContent().catch(()=>null),
+      notice:await page.locator('#notice').textContent().catch(()=>null),
+      banner:await page.locator('#transfer-state-banner').textContent().catch(()=>null)
+    })));
+    throw new Error(error.message+' | states='+JSON.stringify(state)+' | browserErrors='+JSON.stringify(browserErrors.slice(-12)));
+  }
   const perfSeconds=(Date.now()-perfStart)/1000;
   if(perfSeconds>120)throw new Error(perfMiB+' MiB binary transfer exceeded smoke-test budget');
 

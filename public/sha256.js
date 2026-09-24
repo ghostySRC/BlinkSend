@@ -79,5 +79,6 @@
     }
     hex() { return [...this.digest()].map(v=>v.toString(16).padStart(2,'0')).join(''); }
   }
-  window.BlinkSHA256 = SHA256;
+  globalThis.BlinkSHA256 = SHA256;
+  if (typeof window !== 'undefined') window.BlinkSHA256 = SHA256;
 })();

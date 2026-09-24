@@ -415,6 +415,37 @@
   let benchmarkState=null, benchmarkIncoming='', incomingText=null, reconnectCount=0, diagnosticsTimer=0;
   const maxTextBytes = BlinkSecurity.LIMITS.textBytes;
   const supportsOpfs = !!navigator.storage?.getDirectory;
+  async function createOpfsWorkerBridge(handle,{truncate=false,resumeBytes=0}={}){
+    if(!supportsOpfs||!window.Worker)return null;
+    const worker=new Worker('/receive-worker.js');
+    let sequence=0,closed=false;
+    const pendingCalls=new Map();
+    let readyResolve,readyReject;
+    const ready=new Promise((resolve,reject)=>{readyResolve=resolve;readyReject=reject;});
+    const failAll=error=>{for(const {reject} of pendingCalls.values())reject(error);pendingCalls.clear();readyReject?.(error);};
+    worker.onmessage=event=>{
+      const msg=event.data||{};
+      if(msg.type==='ready'){readyResolve?.(msg);readyResolve=readyReject=null;return;}
+      if(msg.type==='error'){
+        const error=new Error(msg.message||'OPFS worker failed');
+        if(msg.id&&pendingCalls.has(msg.id)){pendingCalls.get(msg.id).reject(error);pendingCalls.delete(msg.id);}
+        else failAll(error);
+        return;
+      }
+      if(msg.id&&pendingCalls.has(msg.id)){pendingCalls.get(msg.id).resolve(msg);pendingCalls.delete(msg.id);}
+    };
+    worker.onerror=event=>failAll(new Error(event.message||'OPFS worker failed'));
+    worker.postMessage({type:'init',handle,truncate,resumeBytes});
+    try{await ready;}catch(error){worker.terminate();throw error;}
+    return {
+      call(type,payload={},transfer=[]){
+        if(closed)return Promise.reject(new Error('OPFS worker is closed'));
+        const id=String(++sequence);
+        return new Promise((resolve,reject)=>{pendingCalls.set(id,{resolve,reject});worker.postMessage({type,id,...payload},transfer);});
+      },
+      terminate(){if(closed)return;closed=true;worker.terminate();failAll(new Error('OPFS worker terminated'));}
+    };
+  }
   const format = bytes => bytes < 1024 ? `${bytes} B` : bytes < 1048576 ? `${(bytes / 1024).toFixed(1)} KB` : bytes < 1073741824 ? `${(bytes / 1048576).toFixed(1)} MB` : `${(bytes / 1073741824).toFixed(2)} GB`;
   let socket, pc, channel, pending, active, incomingQueue = Promise.resolve(), signalQueue = Promise.resolve(), connectTimer, iceToken = '', isOfferer=false, iceRestartTimer;
   let readyLabel = 'ready', peerVerified = false, localVerified = false, remoteVerified = false, verificationCode = '', calibrating=false;
@@ -453,7 +484,7 @@
   function rememberPeerName(name){name=sanitizeDeviceName(name);if(!name)return;const names=[name,...recentPeerNames().filter(x=>x!==name)].slice(0,6);saveSetting('blinksend-recent-peers',JSON.stringify(names));renderRecentPeers();}
   function renderRecentPeers(){const names=recentPeerNames();els['recent-peers'].innerHTML='';if(!names.length){const span=document.createElement('span');span.className='hint';span.textContent=tr('noRecentDevices');els['recent-peers'].append(span);return;}for(const name of names){const span=document.createElement('span');span.className='recent-peer';span.textContent=name;els['recent-peers'].append(span);}}
   function setTransferBanner(text='',state=''){if(!text){els['transfer-state-banner'].hidden=true;els['transfer-state-banner'].textContent='';els['transfer-state-banner'].removeAttribute('data-state');return;}els['transfer-state-banner'].hidden=false;els['transfer-state-banner'].dataset.state=state;els['transfer-state-banner'].textContent=text;}
-  function updateDiagnostics(){const direct=connectionMetrics.relayed?tr('pathRelay'):tr('pathDirect');els['diag-connection'].textContent=pc?.connectionState||'—';els['diag-transport'].textContent=channel?.readyState==='open'?`${direct}${connectionMetrics.localType||connectionMetrics.remoteType?` · ${connectionMetrics.localType||'?'}→${connectionMetrics.remoteType||'?'}`:''}`:'—';els['diag-rtt'].textContent=connectionMetrics.rttMs?`${connectionMetrics.rttMs} ms`:'—';els['diag-measured'].textContent=connectionMetrics.throughputBps?`${format(connectionMetrics.throughputBps)}/s`:'—';els['diag-chunk'].textContent=format(active?.chunkSize||tuning.chunkSize);els['diag-buffer'].textContent=format(active?.highWater||tuning.highWater);els['diag-reconnects'].textContent=String(reconnectCount);els['diag-capabilities'].textContent=[window.showOpenFilePicker?'File picker':'Downloads',window.showDirectoryPicker?'Folders':'Folder fallback',supportsOpfs?'OPFS':'No OPFS','serviceWorker' in navigator?'PWA':'No PWA',navigator.share?'Share':'No Share'].join(' · ');}
+  function updateDiagnostics(){const direct=connectionMetrics.relayed?tr('pathRelay'):tr('pathDirect');els['diag-connection'].textContent=pc?.connectionState||'—';els['diag-transport'].textContent=channel?.readyState==='open'?`${direct}${connectionMetrics.localType||connectionMetrics.remoteType?` · ${connectionMetrics.localType||'?'}→${connectionMetrics.remoteType||'?'}`:''}`:'—';els['diag-rtt'].textContent=connectionMetrics.rttMs?`${connectionMetrics.rttMs} ms`:'—';els['diag-measured'].textContent=connectionMetrics.throughputBps?`${format(connectionMetrics.throughputBps)}/s`:'—';els['diag-chunk'].textContent=format(active?.chunkSize||tuning.chunkSize);els['diag-buffer'].textContent=format(active?.highWater||tuning.highWater);els['diag-reconnects'].textContent=String(reconnectCount);els['diag-capabilities'].textContent=[window.showOpenFilePicker?'File picker':'Downloads',window.showDirectoryPicker?'Folders':'Folder fallback',supportsOpfs?'OPFS fast path':'No OPFS','serviceWorker' in navigator?'PWA':'No PWA',navigator.share?'Share':'No Share'].join(' · ');}
   function renderQueue(){const locked=!!outgoingBatch,count=outgoing.length,total=outgoing.reduce((n,e)=>n+(e.file?.size||e.size||0),0);els['queue-panel'].hidden=!count;els['queue-summary'].textContent=count?tr('queueSummary',{count,size:format(total)}):'';els['clear-queue'].disabled=locked||!count;els['clear-queue'].title=locked?tr('queueLocked'):'';els['queue-list'].innerHTML='';outgoing.forEach((entry,index)=>{const row=document.createElement('div');row.className='queue-item';const main=document.createElement('div');main.className='queue-item-main';const name=document.createElement('span');name.className='queue-item-name';name.textContent=entry.relativePath||entry.file?.name||entry.name||'File';const size=document.createElement('span');size.className='queue-item-size';size.textContent=format(entry.file?.size||entry.size||0);main.append(name,size);const actions=document.createElement('div');actions.className='queue-item-actions';for(const [symbol,title,delta] of [['↑',tr('moveUp'),-1],['↓',tr('moveDown'),1]]){const b=document.createElement('button');b.type='button';b.className='queue-icon-button';b.textContent=symbol;b.title=title;b.disabled=(delta<0&&index===0)||(delta>0&&index===outgoing.length-1);b.onclick=()=>{const next=index+delta;[outgoing[index],outgoing[next]]=[outgoing[next],outgoing[index]];renderQueue();};actions.append(b);}const remove=document.createElement('button');remove.type='button';remove.className='queue-icon-button';remove.textContent='×';remove.title=tr('remove');remove.disabled=locked;remove.onclick=()=>{outgoing.splice(index,1);batchTotal=Math.max(batchDone+(active?1:0)+outgoing.length,active?1:0);renderQueue();renderTransfer();};actions.append(remove);row.append(main,actions);els['queue-list'].append(row);});}
   async function renderHistory() {
     if (!window.BlinkStore?.listHistory) return;
@@ -606,6 +637,7 @@
   }
   function stopTransfer(message, notify = true, preserveQueue = false, vars = {}) {
     active?.flowWake?.();
+    active?.opfsWorker?.terminate?.();
     if (notify && active && channel?.readyState === 'open') channel.send(JSON.stringify({ type: 'cancel', id: active.id }));
     if (active?.writer) active.writer.abort().catch(() => {});
     if (active?.opfs) active.opfs.root.removeEntry(active.opfs.tempName).catch(() => {});
@@ -758,20 +790,31 @@
     channel.send(JSON.stringify({type:'flow',id:state.id,received:state.received,windowBytes}));
   }
   async function flushReceiveWrites(state=active){
-    if(!state?.writer||!state.writeBuffer?.length)return;
+    if(!state||( !state.writer && !state.opfsWorker )||!state.writeBuffer?.length)return;
     const entries=state.writeBuffer,start=state.writeBufferStart,total=state.writeBufferBytes;
     state.writeBuffer=[];state.writeBufferBytes=0;state.writeBufferStart=-1;
-    const merged=new Uint8Array(total);let cursor=0;
-    for(const entry of entries){merged.set(entry.payload,cursor);cursor+=entry.payload.byteLength;}
-    try{await state.writer.write({type:'write',position:start,data:merged});}
-    catch{await state.writer.seek(start);await state.writer.write(merged);}
-    let expectedSeq=state.nextChunk,sequential=!state.hashDirty;
-    for(const entry of entries){if(entry.seq!==expectedSeq){sequential=false;break;}expectedSeq++;}
-    if(sequential)state.hasher.update(merged);else state.hashDirty=true;
-    for(const entry of entries)BlinkTransfer.commitChunk(state,entry.seq,entry.payload.byteLength);
+    if(state.opfsWorker){
+      const merged=new Uint8Array(total);let cursor=0;
+      for(const entry of entries){merged.set(entry.payload,cursor);cursor+=entry.payload.byteLength;}
+      await state.opfsWorker.call('write',{offset:start,buffer:merged.buffer},[merged.buffer]);
+      for(const entry of entries)BlinkTransfer.commitChunk(state,entry.seq,entry.payload.byteLength);
+    }else{
+      const merged=new Uint8Array(total);let cursor=0;
+      for(const entry of entries){merged.set(entry.payload,cursor);cursor+=entry.payload.byteLength;}
+      try{await state.writer.write({type:'write',position:start,data:merged});}
+      catch{await state.writer.seek(start);await state.writer.write(merged);}
+      let expectedSeq=state.nextChunk,sequential=!state.hashDirty;
+      for(const entry of entries){if(entry.seq!==expectedSeq){sequential=false;break;}expectedSeq++;}
+      if(sequential)state.hasher.update(merged);else state.hashDirty=true;
+      for(const entry of entries)BlinkTransfer.commitChunk(state,entry.seq,entry.payload.byteLength);
+    }
     if(state===active){progress(state.received,state.size,state.started,'receiving');sendFlowUpdate(state);}
-    if(state===active&&state.persistentHandle&&state.writer&&state.received-(state.committedBytes||0)>=(tuning.checkpointBytes||64*1024*1024)){
-      await state.writer.close();state.committedBytes=state.received;await persistReceiveSession();state.writer=await state.persistentHandle.createWritable({keepExistingData:true});
+    if(state===active&&state.persistentHandle&&state.received-(state.committedBytes||0)>=(tuning.checkpointBytes||128*1024*1024)){
+      if(state.opfsWorker){
+        await state.opfsWorker.call('flush');state.committedBytes=state.received;await persistReceiveSession();
+      }else if(state.writer){
+        await state.writer.close();state.committedBytes=state.received;await persistReceiveSession();state.writer=await state.persistentHandle.createWritable({keepExistingData:true});
+      }
     }
   }
   async function pump(id) {
@@ -882,12 +925,20 @@
       const missing=BlinkTransfer.missingRanges(active);
       if(active.received!==active.size||missing.length){sendResumeMap();return;}
       try {
-        if(active.writer){await active.writer.close();active.writer=null;}
-        const localHash=active.hashDirty?await hashReceivedActive(active):active.hasher.hex();
+        let localHash;
+        if(active.opfsWorker){
+          const finalized=await active.opfsWorker.call('finalize',{size:active.size});localHash=finalized.hash;active.opfsWorker.terminate();active.opfsWorker=null;
+        }else{
+          if(active.writer){await active.writer.close();active.writer=null;}
+          localHash=active.hashDirty?await hashReceivedActive(active):active.hasher.hex();
+        }
         if(typeof msg.sha256!=='string'||!/^[a-f0-9]{64}$/.test(msg.sha256)||localHash!==msg.sha256){
           active.retries=(active.retries||0)+1;
           if(active.retries<=2){
-            if(active.persistentHandle){active.writer=await active.persistentHandle.createWritable();}else if(active.opfs?.handle){active.writer=await active.opfs.handle.createWritable();}else active.chunks=new Array(totalChunks);
+            if(active.opfs?.handle){
+              try{active.opfsWorker=await createOpfsWorkerBridge(active.opfs.handle,{truncate:true});active.writer=null;}
+              catch{active.writer=await active.opfs.handle.createWritable();}
+            }else if(active.persistentHandle){active.writer=await active.persistentHandle.createWritable();}else active.chunks=new Array(totalChunks);
             active.received=0;active.committedBytes=0;active.nextChunk=0;active.receivedMap=new Uint8Array(Math.ceil(totalChunks/8));active.totalChunks=totalChunks;active.hasher=new BlinkSHA256();active.hashDirty=false;active.writeBuffer=[];active.writeBufferStart=-1;active.writeBufferBytes=0;active.lastFlowSent=0;active.lastFlowAt=0;active.paused=false;
             channel.send(JSON.stringify({type:'retry',id:msg.id,attempt:active.retries}));progress(0,active.size,active.started,'receiving');return;
           }
@@ -929,8 +980,8 @@
     if(!check.ok){stopTransfer('excess');return;}if(check.duplicate)return;
     const offset=check.offset;
     try{
-      if(active.writer){
-        const copied=payload.slice(),target=Math.max(size,tuning.writeBatch||1024*1024);
+      if(active.writer||active.opfsWorker){
+        const target=Math.max(size,tuning.writeBatch||1024*1024);
         const expected=active.writeBuffer?.length?(active.writeBufferStart+active.writeBufferBytes):offset;
         if(active.writeBuffer?.length&&offset!==expected){
           await flushReceiveWrites(active);
@@ -938,7 +989,12 @@
           if(!afterFlush.ok){stopTransfer('excess');return;}if(afterFlush.duplicate)return;
         }
         if(!active.writeBuffer?.length){active.writeBuffer=[];active.writeBufferStart=offset;active.writeBufferBytes=0;}
-        active.writeBuffer.push({seq,payload:copied});active.writeBufferBytes+=copied.byteLength;
+        if(active.opfsWorker){
+          active.writeBuffer.push({seq,offset,payload});
+        }else{
+          const copied=payload.slice();active.writeBuffer.push({seq,offset,payload:copied});
+        }
+        active.writeBufferBytes+=payload.byteLength;
         if(active.writeBufferBytes>=target)await flushReceiveWrites(active);
       }else{
         if(seq!==active.nextChunk)active.hashDirty=true;
@@ -959,14 +1015,19 @@
       try { persistentHandle = await showSaveFilePicker({ suggestedName: request.name }); writer = await persistentHandle.createWritable(); }
       catch (error) { if (error.name === 'AbortError') return; notice('saveLocationFailed'); return; }
     } else if (supportsOpfs && request.size > maxMemoryFile) {
-      try { const root = await navigator.storage.getDirectory(); const tempName = `blinksend-${crypto.randomUUID()}.part`; const handle = await root.getFileHandle(tempName, { create: true }); writer = await handle.createWritable(); opfs = { root, handle, tempName }; persistentHandle = handle; }
-      catch { notice('saveLocationFailed'); return; }
+      try {
+        const root = await navigator.storage.getDirectory(),tempName=`blinksend-${crypto.randomUUID()}.part`,handle=await root.getFileHandle(tempName,{create:true});
+        persistentHandle=handle;opfs={root,handle,tempName};
+        try{opfs.worker=await createOpfsWorkerBridge(handle,{truncate:true});}
+        catch{writer=await handle.createWritable();}
+      } catch { notice('saveLocationFailed'); return; }
     }
-    if (pending?.id !== request.id) { writer?.abort(); return; }
+    if (pending?.id !== request.id) { writer?.abort(); opfs?.worker?.terminate?.(); return; }
     pending = null; els.incoming.hidden = true;
     const receiveChunkSize=request.chunkSize||defaultChunkSize,receiveState=BlinkTransfer.makeReceiveState(request.size,receiveChunkSize);if(!receiveState){notice('transferFailed');return;}const totalChunks=receiveState.totalChunks;
     const flowWindow=Math.min(BlinkSecurity.LIMITS.flowWindowMax,Math.max(BlinkSecurity.LIMITS.flowWindowMin,tuning.receiveWindow||16*1024*1024));
-    active = { ...request, direction:'receive', ...receiveState, committedBytes:0, hasher:new BlinkSHA256(), hashDirty:false, retries:0, chunks:writer ? null : new Array(totalChunks), writer, opfs, persistentHandle, writeBuffer:[], writeBufferStart:-1, writeBufferBytes:0, flowWindow, lastFlowSent:0, lastFlowAt:0, started:Date.now(), paused:false };
+    const opfsWorker=opfs?.worker||null;if(opfs)delete opfs.worker;
+    active = { ...request, direction:'receive', ...receiveState, committedBytes:0, hasher:new BlinkSHA256(), hashDirty:false, retries:0, chunks:(writer||opfsWorker) ? null : new Array(totalChunks), writer, opfsWorker, opfs, persistentHandle, writeBuffer:[], writeBufferStart:-1, writeBufferBytes:0, flowWindow, lastFlowSent:0, lastFlowAt:0, started:Date.now(), paused:false };
     showTransfer(request.relativePath || request.name, request.size);
     await persistReceiveSession();
     channel.send(JSON.stringify({ type:'accept', id:request.id, windowBytes:flowWindow }));
@@ -1104,11 +1165,14 @@
     } else {
       const existing=await s.handle.getFile(),restoredChunk=s.chunkSize||defaultChunkSize,totalChunks=Math.ceil(s.size/restoredChunk);
       const received=Math.min(Number(s.received)||0,s.size),nextChunk=Number.isSafeInteger(s.nextChunk)?Math.min(s.nextChunk,totalChunks):Math.floor(received/restoredChunk),prefixBytes=Math.min(s.size,nextChunk*restoredChunk);
-      const writer=await s.handle.createWritable({keepExistingData:true});
+      let writer=null,opfsWorker=null,restoredOpfs=null;
       incomingBatch=s.batchId?{id:s.batchId,name:s.batchName,rootHandle:s.batchRootHandle,accepted:true}:null;
-      let restoredOpfs=null;if(s.opfs&&s.opfsTempName){const root=await navigator.storage.getDirectory();restoredOpfs={root,handle:s.handle,tempName:s.opfsTempName};}
-      const restoredMap=s.receivedMap instanceof Uint8Array?s.receivedMap:BlinkTransfer.makePrefixBitmap(totalChunks,nextChunk),restoredState=BlinkTransfer.makeReceiveState(s.size,restoredChunk,restoredMap,nextChunk,received),hashDirty=received!==prefixBytes;if(!restoredState){notice('resumeUnavailable');await discardResume();return;}
-      active={id:s.transferId,direction:'receive',name:s.name,size:s.size,relativePath:s.relativePath||'',...restoredState,committedBytes:received,hasher:await rebuildReceiveHasher(s.handle,prefixBytes),hashDirty,retries:0,chunks:null,writer,persistentHandle:s.handle,opfs:restoredOpfs,writeBuffer:[],writeBufferStart:-1,writeBufferBytes:0,flowWindow:tuning.receiveWindow||16*1024*1024,lastFlowSent:received,lastFlowAt:0,started:Date.now(),paused:true,batchId:s.batchId||null};
+      if(s.opfs&&s.opfsTempName){
+        const root=await navigator.storage.getDirectory();restoredOpfs={root,handle:s.handle,tempName:s.opfsTempName};
+        try{opfsWorker=await createOpfsWorkerBridge(s.handle,{resumeBytes:prefixBytes});}catch{writer=await s.handle.createWritable({keepExistingData:true});}
+      }else writer=await s.handle.createWritable({keepExistingData:true});
+      const restoredMap=s.receivedMap instanceof Uint8Array?s.receivedMap:BlinkTransfer.makePrefixBitmap(totalChunks,nextChunk),restoredState=BlinkTransfer.makeReceiveState(s.size,restoredChunk,restoredMap,nextChunk,received),hashDirty=received!==prefixBytes;if(!restoredState){notice('resumeUnavailable');opfsWorker?.terminate?.();await discardResume();return;}
+      active={id:s.transferId,direction:'receive',name:s.name,size:s.size,relativePath:s.relativePath||'',...restoredState,committedBytes:received,hasher:opfsWorker?new BlinkSHA256():await rebuildReceiveHasher(s.handle,prefixBytes),hashDirty,retries:0,chunks:null,writer,opfsWorker,persistentHandle:s.handle,opfs:restoredOpfs,writeBuffer:[],writeBufferStart:-1,writeBufferBytes:0,flowWindow:tuning.receiveWindow||16*1024*1024,lastFlowSent:received,lastFlowAt:0,started:Date.now(),paused:true,batchId:s.batchId||null};
       showTransfer(s.relativePath || s.name,s.size); active.stage='resuming'; renderTransfer();
     }
     els['resume-card'].hidden=true; resumeSession=null;
