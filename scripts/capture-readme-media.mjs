@@ -11,7 +11,7 @@ await mkdir(tmp,{recursive:true});
 await mkdir(media,{recursive:true});
 
 const port=3127;
-const base=\`http://127.0.0.1:\${port}\`;
+const base=`http://127.0.0.1:${port}`;
 const server=spawn(process.execPath,['server.js'],{
   cwd:root,
   env:{...process.env,PORT:String(port),LOG_LEVEL:'silent'},
@@ -32,13 +32,13 @@ const browser=await chromium.launch({headless:true});
 async function overlay(page){
   await page.evaluate(()=>{
     const style=document.createElement('style');
-    style.textContent=\`
+    style.textContent=`
       #doc-cursor{position:fixed;left:0;top:0;z-index:2147483647;width:44px;height:52px;pointer-events:none;transform:translate3d(48px,48px,0);transition:transform .55s cubic-bezier(.22,.9,.24,1);filter:drop-shadow(0 2px 2px #0006)}
       #doc-cursor svg{width:44px;height:52px;display:block}
       #doc-label{position:fixed;z-index:2147483646;left:0;top:0;pointer-events:none;background:#206a59;color:white;border-radius:999px;padding:7px 11px;font:700 13px/1 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;opacity:0;transform:translate3d(80px,40px,0);transition:transform .55s cubic-bezier(.22,.9,.24,1),opacity .18s}
       .doc-ripple{position:fixed;z-index:2147483645;width:18px;height:18px;margin:-9px 0 0 -9px;border:4px solid #206a59;border-radius:50%;pointer-events:none;animation:docRipple .45s ease-out forwards}
       @keyframes docRipple{to{width:70px;height:70px;margin:-35px 0 0 -35px;opacity:0}}
-    \`;
+    `;
     document.head.append(style);
     const c=document.createElement('div');c.id='doc-cursor';
     c.innerHTML='<svg viewBox="0 0 44 52" xmlns="http://www.w3.org/2000/svg"><path d="M4 3 L8 39 L17 29 L27 47 L36 42 L25 25 L40 22 Z" fill="white" stroke="#11181b" stroke-width="3" stroke-linejoin="round"/></svg>';
@@ -50,9 +50,9 @@ async function move(page,x,y,label='',ms=550){
   await page.evaluate(({x,y,label,ms})=>{
     const c=document.querySelector('#doc-cursor'),l=document.querySelector('#doc-label');
     c.style.transitionDuration=ms+'ms';l.style.transitionDuration=ms+'ms';
-    c.style.transform=\`translate3d(\${x}px,\${y}px,0)\`;
+    c.style.transform=`translate3d(${x}px,${y}px,0)`;
     l.textContent=label;l.style.opacity=label?'1':'0';
-    l.style.transform=\`translate3d(\${Math.min(innerWidth-190,x+45)}px,\${Math.max(8,y-18)}px,0)\`;
+    l.style.transform=`translate3d(${Math.min(innerWidth-190,x+45)}px,${Math.max(8,y-18)}px,0)`;
   },{x,y,label,ms});
   await page.waitForTimeout(ms+80);
 }
