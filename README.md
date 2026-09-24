@@ -197,6 +197,8 @@ BlinkSend includes in-memory per-IP limits for room joins, WebSocket upgrades, Q
 
 ## Development
 
+Project/runtime documentation is kept in `README.md` and `SECURITY.md` so the repository stays focused on BlinkSend itself.
+
 ```bash
 npm ci
 npm test
