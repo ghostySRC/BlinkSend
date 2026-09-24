@@ -29,3 +29,7 @@ BlinkSend is designed for direct, ephemeral transfers between two browsers.
 ## Public deployment
 
 The built-in controls are a baseline, not a complete internet-facing abuse platform. Public operators should additionally use a reverse proxy or edge service for distributed rate limiting, monitor TURN bandwidth, keep dependencies patched, terminate HTTPS correctly, and avoid logging room URLs or TURN credentials. `TRUST_PROXY` must only be enabled when BlinkSend is reachable exclusively through a trusted proxy that overwrites `X-Forwarded-For`; BlinkSend validates the forwarded value as an IP, but direct access to a proxy-trusting origin could still let clients spoof rate-limit/discovery identity. `/metrics` stays disabled unless `METRICS_TOKEN` is configured.
+
+## Untrusted peer resource limits
+
+The receiving browser validates peer-controlled metadata before allocating chunk maps, file arrays, folder structures, or text buffers. Current client-side bounds cover file/batch size, file count, path depth and byte length, identifiers, chunk count, resume-range count, control JSON size, queue length, and clipboard framing. Oversized or contradictory messages are rejected before transfer state is created. These limits live in `public/security.js` so protocol handlers and tests use the same definitions.

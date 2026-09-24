@@ -404,7 +404,7 @@
   let tuning=BlinkProtocol.chooseTuning({deviceMemory:navigator.deviceMemory||4,cores:navigator.hardwareConcurrency||4});
   let connectionMetrics={rttMs:0,throughputBps:0,relayed:false,localType:'',remoteType:''};
   let benchmarkState=null, benchmarkIncoming='', incomingText=null, reconnectCount=0, diagnosticsTimer=0;
-  const maxTextBytes = 256 * 1024;
+  const maxTextBytes = BlinkSecurity.LIMITS.textBytes;
   const supportsOpfs = !!navigator.storage?.getDirectory;
   const format = bytes => bytes < 1024 ? `${bytes} B` : bytes < 1048576 ? `${(bytes / 1024).toFixed(1)} KB` : bytes < 1073741824 ? `${(bytes / 1048576).toFixed(1)} MB` : `${(bytes / 1073741824).toFixed(2)} GB`;
   let socket, pc, channel, pending, active, incomingQueue = Promise.resolve(), signalQueue = Promise.resolve(), connectTimer, iceToken = '', isOfferer=false, iceRestartTimer;
@@ -436,7 +436,7 @@
     if(item.files?.length){enqueueEntries(item.files.map(file=>({file,relativePath:file.webkitRelativePath||''})));return;}
     const text=[item.title,item.text,item.url].filter(Boolean).join('\n').trim();if(text)await sendTextValue(text);
   }
-  const sanitizeDeviceName = value => String(value || '').replace(/[\x00-\x1f\x7f]/g,'').trim().slice(0,64);
+  const sanitizeDeviceName = value => String(value || '').replace(/[\x00-\x1f\x7f]/g,'').trim().slice(0,BlinkSecurity.LIMITS.deviceNameChars);
   let deviceName = sanitizeDeviceName(readSetting('blinksend-device-name')) || 'BlinkSend device';
   let completionFeedback = readSetting('blinksend-completion-feedback') === '1';
   let nearbyDiscovery = readSetting('blinksend-nearby') === '1', scannerStream=null, scannerLoop=0;
@@ -653,12 +653,14 @@
     for (const part of parts.slice(0,-1)) dir = await dir.getDirectoryHandle(part, { create:true });
     return dir.getFileHandle(parts.at(-1) || fallbackName, { create:true });
   }
-  async function collectDirectory(handle, prefix = '') {
-    const entries = [];
-    for await (const [name, child] of handle.entries()) {
-      const path = prefix ? `${prefix}/${name}` : name;
-      if (child.kind === 'directory') entries.push(...await collectDirectory(child, path));
-      else { const file = await child.getFile(); entries.push({ file, handle:child, relativePath:path }); }
+  async function collectDirectory(handle, prefix = '', depth = 0, state = {count:0,total:0}) {
+    if(depth>BlinkSecurity.LIMITS.directoryDepth)throw new Error('Folder depth limit');
+    const entries=[];
+    for await (const [name,child] of handle.entries()) {
+      if(state.count>=BlinkSecurity.LIMITS.batchFiles)throw new Error('Folder file limit');
+      const path=prefix?`${prefix}/${name}`:name;if(BlinkSecurity.safeRelativePath(path)===null)throw new Error('Invalid folder path');
+      if(child.kind==='directory')entries.push(...await collectDirectory(child,path,depth+1,state));
+      else{const file=await child.getFile();state.count++;state.total+=file.size;if(file.size>BlinkSecurity.LIMITS.fileBytes||state.total>BlinkSecurity.LIMITS.batchBytes)throw new Error('Folder size limit');entries.push({file,handle:child,relativePath:path});}
     }
     return entries;
   }
@@ -726,7 +728,7 @@
   async function resumeOutgoingRanges(ranges){
     if(!active||active.direction!=='send')return;
     const size=active.chunkSize||defaultChunkSize,total=Math.ceil(active.file.size/size);
-    if(!BlinkProtocol.validateRanges(ranges,total))return;
+    if(!BlinkSecurity.validRanges(ranges,total))return;
     active.fullHash=await hashWholeFile(active.file,size);active.hasher=null;active.sendRanges=ranges.map(r=>[r[0],r[1]]);active.rangeIndex=0;active.rangeSeq=active.sendRanges[0]?.[0]??total;
     let missing=0;for(const [s,e] of active.sendRanges){const start=s*size,end=Math.min(active.file.size,(e+1)*size);missing+=Math.max(0,end-start);}
     active.sent=Math.max(0,active.file.size-missing);active.paused=false;active.stage='resuming';setTransferBanner(tr('resumeBanner',{percent:Math.floor((active.sent/Math.max(1,active.file.size))*100)}),'ok');progress(active.sent,active.file.size,active.started,'sending');pump(active.id);
@@ -759,7 +761,7 @@
     else{if(outgoingBatch?.id&&channel?.readyState==='open')channel.send(JSON.stringify({type:'batch-complete',id:outgoingBatch.id}));batchTotal=0;batchDone=0;outgoingBatch=null;clearPersistent();renderQueue();els['post-transfer'].hidden=false;}
   }
   function enqueueEntries(entries,folderName=''){
-    if(!entries?.length||channel?.readyState!=='open'||pending||outgoingBatch)return;
+    if(!entries?.length||channel?.readyState!=='open'||pending||outgoingBatch)return;if(entries.length+outgoing.length>BlinkSecurity.LIMITS.queueFiles){notice('transferFailed');return;}
     const normalized=entries.map(entry=>entry.file?entry:({file:entry,relativePath:entry.webkitRelativePath||''})),isFolder=!!folderName||normalized.some(x=>x.relativePath);
     if(isFolder&&active){notice('finishFirst');return;}
     if(isFolder){outgoing=[...normalized];batchTotal=outgoing.length;batchDone=0;const id=crypto.randomUUID(),name=folderName||outgoing[0].relativePath.split('/')[0]||'Folder',totalSize=outgoing.reduce((sum,x)=>sum+x.file.size,0);outgoingBatch={id,name,entries:[...outgoing],totalSize,count:outgoing.length,completedBytes:0,completedCount:0};renderQueue();channel.send(JSON.stringify({type:'batch-request',id,name,count:outgoing.length,totalSize}));return;}
@@ -791,6 +793,7 @@
     } catch {if(active?.id===id){pauseTransfer();status('paused');}}
   }
   async function control(raw) {
+    if(!BlinkSecurity.controlJsonWithinLimit(raw))return;
     let msg; try { msg = JSON.parse(raw); } catch { return; }
     if(msg.type==='benchmark-start'&&typeof msg.id==='string'){benchmarkIncoming=msg.id;channel.send(JSON.stringify({type:'benchmark-ready',id:msg.id}));return;}
     if(msg.type==='benchmark-ready'&&benchmarkState?.id===msg.id){sendBenchmarkPayload();return;}
@@ -798,8 +801,8 @@
     if(msg.type==='benchmark-ack'&&benchmarkState?.id===msg.id&&benchmarkState.started){const seconds=Math.max(.001,(performance.now()-benchmarkState.started)/1000);benchmarkState.resolve?.((Number(msg.bytes)||benchmarkState.bytes)/seconds);return;}
     if (msg.type === 'hello') { peerName=sanitizeDeviceName(msg.name); els['peer-name'].textContent=peerName; rememberPeerName(peerName); updateDiagnostics(); return; }
     if (msg.type === 'batch-request') {
-      if (active || pending || !msg.id || typeof msg.name !== 'string' || !Number.isSafeInteger(msg.count) || msg.count < 1 || !Number.isSafeInteger(msg.totalSize) || msg.totalSize < 0) return;
-      pending = { type:'batch', id:msg.id, name:msg.name.replace(/[\\/\x00-\x1f\x7f]/g,'_').trim() || 'Folder', count:msg.count, totalSize:msg.totalSize };
+      if (active || pending || !BlinkSecurity.validBatchRequest(msg)) return;
+      pending = { type:'batch', id:msg.id, name:BlinkSecurity.safeName(msg.name,'Folder'), count:msg.count, totalSize:msg.totalSize };
       els['incoming-title'].textContent = tr('incomingFolder');
       els['incoming-detail'].textContent = tr('folderPrompt', { name:pending.name, count:pending.count, size:format(pending.totalSize) });
       els['save-note'].textContent = window.showDirectoryPicker ? tr('saveFolder') : tr('folderUnsupported');
@@ -810,10 +813,10 @@
     if (msg.type === 'batch-decline' && outgoingBatch?.id === msg.id) { outgoing=[]; outgoingBatch=null; batchTotal=0; batchDone=0; notice('declined'); return; }
     if (msg.type === 'batch-complete' && incomingBatch?.id === msg.id) { incomingBatch=null; await clearBatchContext(); return; }
     if (msg.type === 'request') {
-      if (active || pending || typeof msg.name !== 'string' || msg.name.length > 255 || !Number.isSafeInteger(msg.size) || msg.size < 0 || typeof msg.id !== 'string' || msg.id.length>80 || (msg.batchId!=null&&(typeof msg.batchId!=='string'||msg.batchId.length>80))) { channel.send(JSON.stringify({ type: 'decline', id: msg.id })); return; }
-      let safeName = msg.name.replace(/[\\/\x00-\x1f\x7f]/g, '_').trim() || 'download';if(safeName==='.'||safeName==='..')safeName='_';
-      const safePath=BlinkProtocol.sanitizeRelativePath(msg.relativePath);if(safePath===null){channel.send(JSON.stringify({type:'decline',id:msg.id}));return;}
-      const requestedChunk=Number.isSafeInteger(msg.chunkSize)&&msg.chunkSize>=16*1024&&msg.chunkSize<=64*1024?msg.chunkSize:defaultChunkSize;
+      if (active || pending || !BlinkSecurity.validFileRequest(msg)) { channel.send(JSON.stringify({ type: 'decline', id: typeof msg.id==='string'?msg.id:'' })); return; }
+      const safeName=BlinkSecurity.safeName(msg.name,'download');
+      const safePath=BlinkSecurity.safeRelativePath(msg.relativePath);
+      const requestedChunk=Number.isSafeInteger(msg.chunkSize)?msg.chunkSize:defaultChunkSize;
       pending = { id: msg.id, name: safeName, relativePath: safePath, size: msg.size, chunkSize:requestedChunk, batchId:typeof msg.batchId === 'string' ? msg.batchId : null };
       if (pending.batchId && incomingBatch?.id === pending.batchId && incomingBatch.accepted) { await acceptPendingFile(true); return; }
       els['incoming-title'].textContent = tr('incomingFile');
@@ -829,7 +832,7 @@
     }
     if(msg.type==='resume-map'&&active?.id===msg.id&&active.direction==='send'){
       const total=Math.ceil(active.file.size/(active.chunkSize||defaultChunkSize));
-      if(!BlinkProtocol.validateRanges(msg.ranges,total))return;
+      if(!BlinkSecurity.validRanges(msg.ranges,total))return;
       if(!peerVerified)active.pendingRanges=msg.ranges;else await resumeOutgoingRanges(msg.ranges);
     }
     if(msg.type==='retry'&&active?.id===msg.id&&active.direction==='send'){
@@ -876,10 +879,10 @@
       setTransferBanner();finishOutgoing('verifiedSent', { current: batchDone + 1, total: batchTotal });
     }
     if(msg.type==='text-start'){
-      if(typeof msg.id!=='string'||msg.id.length>80||!Number.isSafeInteger(msg.parts)||msg.parts<1||msg.parts>64||!Number.isSafeInteger(msg.bytes)||msg.bytes<0||msg.bytes>maxTextBytes)return;
+      if(!BlinkSecurity.validTextStart(msg))return;
       incomingText={id:msg.id,parts:new Array(msg.parts),bytes:msg.bytes};return;
     }
-    if(msg.type==='text-part'){if(!incomingText||msg.id!==incomingText.id||!Number.isSafeInteger(msg.index)||msg.index<0||msg.index>=incomingText.parts.length||typeof msg.text!=='string'||new TextEncoder().encode(msg.text).byteLength>32*1024)return;incomingText.parts[msg.index]=msg.text;return;}
+    if(msg.type==='text-part'){if(!BlinkSecurity.validTextPart(msg,incomingText))return;incomingText.parts[msg.index]=msg.text;return;}
     if(msg.type==='text-end'){if(!incomingText||msg.id!==incomingText.id||incomingText.parts.some(x=>typeof x!=='string'))return;const text=incomingText.parts.join(''),expected=incomingText.bytes;incomingText=null;if(new TextEncoder().encode(text).byteLength!==expected)return;await receiveTextValue(text);return;}
     if (msg.type === 'text' && typeof msg.text === 'string') { const bytes=new TextEncoder().encode(msg.text).byteLength;if(bytes<=maxTextBytes)await receiveTextValue(msg.text); }
   }
@@ -917,7 +920,7 @@
     }
     if (pending?.id !== request.id) { writer?.abort(); return; }
     pending = null; els.incoming.hidden = true;
-    const receiveChunkSize=request.chunkSize||defaultChunkSize,totalChunks=Math.ceil(request.size/receiveChunkSize);
+    const receiveChunkSize=request.chunkSize||defaultChunkSize,totalChunks=BlinkSecurity.chunkCount(request.size,receiveChunkSize);if(!Number.isFinite(totalChunks)||totalChunks>BlinkSecurity.LIMITS.maxChunks){notice('transferFailed');return;}
     active = { ...request, direction:'receive', chunkSize:receiveChunkSize, received:0, committedBytes:0, nextChunk:0, receivedMap:new Uint8Array(Math.ceil(totalChunks/8)), hasher:new BlinkSHA256(), hashDirty:false, retries:0, chunks:writer ? null : new Array(totalChunks), writer, opfs, persistentHandle, started:Date.now(), paused:false };
     showTransfer(request.relativePath || request.name, request.size);
     await persistReceiveSession();

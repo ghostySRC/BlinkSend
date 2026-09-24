@@ -203,6 +203,10 @@ BlinkSend includes in-memory per-IP limits for room joins, WebSocket upgrades, Q
 | A transfer stops midway | BlinkSend should resume after reconnect. On supported desktop browsers it can also recover the current transfer after a reload; click **Resume transfer** and grant file access if prompted. |
 | Reverse proxy loads the page but pairing fails | Ensure `/signal` supports WebSocket upgrades and the page is served over HTTPS. |
 
+## Reliability and resource limits
+
+BlinkSend treats the other browser as untrusted. Before allocating transfer state or creating destination structures, the client applies explicit limits to control-message size, file metadata, batch counts and bytes, path depth/length, text framing, resume ranges, queue length, and total chunk count. These limits are defined in `public/security.js` and covered by hostile-input tests; they are safety bounds rather than advertised performance targets.
+
 ## Development
 
 Project/runtime documentation is kept in `README.md` and `SECURITY.md` so the repository stays focused on BlinkSend itself.
