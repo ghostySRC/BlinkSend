@@ -205,11 +205,11 @@ BlinkSend includes in-memory per-IP limits for room joins, WebSocket upgrades, Q
 
 ## Client architecture
 
-Security- and recovery-sensitive primitives are separated from the UI controller: `verification.js` derives the peer code from DTLS fingerprints, `connection.js` summarizes selected WebRTC transport statistics without exposing candidate addresses, `transfer-core.js` owns chunk/bitmap/hash primitives, `storage.js` owns bounded filesystem traversal, `security.js` owns peer-input limits, and `persistence.js` owns IndexedDB session/history state. `app.js` remains the browser orchestrator rather than the implementation home for every primitive.
+Security- and recovery-sensitive primitives are separated from the UI controller: `verification.js` derives the peer code from DTLS fingerprints, `connection.js` summarizes selected WebRTC transport statistics without exposing candidate addresses, `transfer-core.js` owns chunk/bitmap/hash primitives, `storage.js` owns bounded filesystem traversal, `security.js` owns peer-input limits, `control-policy.js` blocks impossible/pre-verification control flows, and `persistence.js` owns IndexedDB session/history state. `app.js` remains the browser orchestrator rather than the implementation home for every primitive.
 
 ## Reliability and resource limits
 
-BlinkSend treats the other browser as untrusted. Before allocating transfer state or creating destination structures, the client applies explicit limits to control-message size, file metadata, batch counts and bytes, path depth/length, text framing, resume ranges, queue length, and total chunk count. These limits are defined in `public/security.js` and covered by hostile-input tests; they are safety bounds rather than advertised performance targets.
+BlinkSend treats the other browser as untrusted. Before allocating transfer state or creating destination structures, the client applies explicit limits to control-message size, file metadata, batch counts and bytes, path depth/length, text framing, resume ranges, queue length, and total chunk count. These limits are defined in `public/security.js` and covered by hostile-input tests. File/folder/text/benchmark initiation is also rejected until mutual peer verification completes; they are safety bounds rather than advertised performance targets.
 
 ## Development
 

@@ -749,6 +749,7 @@
   async function control(raw) {
     if(!BlinkSecurity.controlJsonWithinLimit(raw))return;
     let msg; try { msg = JSON.parse(raw); } catch { return; }
+    if(!BlinkControlPolicy.allowed(msg?.type,peerVerified))return;
     if(msg.type==='benchmark-start'&&typeof msg.id==='string'){benchmarkIncoming=msg.id;channel.send(JSON.stringify({type:'benchmark-ready',id:msg.id}));return;}
     if(msg.type==='benchmark-ready'&&benchmarkState?.id===msg.id){sendBenchmarkPayload();return;}
     if(msg.type==='benchmark-end'&&benchmarkIncoming===msg.id){benchmarkIncoming='';channel.send(JSON.stringify({type:'benchmark-ack',id:msg.id,bytes:msg.bytes}));return;}
@@ -798,7 +799,7 @@
     if (msg.type === 'cancel') { if (pending?.id === msg.id) { pending = null; els.incoming.hidden = true; status(readyLabel, true); } if (active?.id === msg.id) { if (active.direction === 'send') finishOutgoing('peerCancelled'); else stopTransfer('peerCancelled', false); } }
     if (msg.type === 'complete' && active?.id === msg.id && active.direction === 'receive') {
       const totalChunks=Math.ceil(active.size/(active.chunkSize||defaultChunkSize));
-      const missing=BlinkProtocol.missingRanges(active.receivedMap,totalChunks);
+      const missing=BlinkTransfer.missingRanges(active);
       if(active.received!==active.size||missing.length){sendResumeMap();return;}
       try {
         if(active.writer){await active.writer.close();active.writer=null;}
@@ -807,7 +808,7 @@
           active.retries=(active.retries||0)+1;
           if(active.retries<=2){
             if(active.persistentHandle){active.writer=await active.persistentHandle.createWritable();}else if(active.opfs?.handle){active.writer=await active.opfs.handle.createWritable();}else active.chunks=new Array(totalChunks);
-            active.received=0;active.committedBytes=0;active.nextChunk=0;active.receivedMap=new Uint8Array(Math.ceil(totalChunks/8));active.hasher=new BlinkSHA256();active.hashDirty=false;active.paused=false;
+            active.received=0;active.committedBytes=0;active.nextChunk=0;active.receivedMap=new Uint8Array(Math.ceil(totalChunks/8));active.totalChunks=totalChunks;active.hasher=new BlinkSHA256();active.hashDirty=false;active.paused=false;
             channel.send(JSON.stringify({type:'retry',id:msg.id,attempt:active.retries}));progress(0,active.size,active.started,'receiving');return;
           }
           stopTransfer('hashMismatch');return;
@@ -844,14 +845,14 @@
     if(!active||active.direction!=='receive')return;
     const unpacked=BlinkTransfer.unpackChunk(data);if(!unpacked)return;
     const {seq,payload}=unpacked,size=active.chunkSize||defaultChunkSize;
-    const totalChunks=Math.ceil(active.size/size);if(seq>=totalChunks){stopTransfer('excess');return;}if(BlinkTransfer.bitmapHas(active.receivedMap,seq))return;
-    const offset=seq*size;if(offset+payload.byteLength>active.size){stopTransfer('excess');return;}
+    const totalChunks=active.totalChunks??BlinkSecurity.chunkCount(active.size,size),check=BlinkTransfer.inspectChunk(active,seq,payload.byteLength);
+    if(!check.ok){stopTransfer('excess');return;}if(check.duplicate)return;
+    const offset=check.offset;
     try{
       if(seq!==active.nextChunk)active.hashDirty=true;
       if(!active.hashDirty&&seq===active.nextChunk)active.hasher.update(payload);
       if(active.writer){await active.writer.seek(offset);await active.writer.write(payload);}else active.chunks[seq]=payload.slice();
-      BlinkProtocol.markChunk(active.receivedMap,seq);active.received+=payload.byteLength;
-      while(active.nextChunk<totalChunks&&BlinkTransfer.bitmapHas(active.receivedMap,active.nextChunk))active.nextChunk++;
+      BlinkTransfer.commitChunk(active,seq,payload.byteLength);
       if(active.persistentHandle&&active.writer&&active.received-(active.committedBytes||0)>=8*1024*1024){
         await active.writer.close();active.committedBytes=active.received;await persistReceiveSession();active.writer=await active.persistentHandle.createWritable({keepExistingData:true});
       }
@@ -874,8 +875,8 @@
     }
     if (pending?.id !== request.id) { writer?.abort(); return; }
     pending = null; els.incoming.hidden = true;
-    const receiveChunkSize=request.chunkSize||defaultChunkSize,totalChunks=BlinkSecurity.chunkCount(request.size,receiveChunkSize);if(!Number.isFinite(totalChunks)||totalChunks>BlinkSecurity.LIMITS.maxChunks){notice('transferFailed');return;}
-    active = { ...request, direction:'receive', chunkSize:receiveChunkSize, received:0, committedBytes:0, nextChunk:0, receivedMap:new Uint8Array(Math.ceil(totalChunks/8)), hasher:new BlinkSHA256(), hashDirty:false, retries:0, chunks:writer ? null : new Array(totalChunks), writer, opfs, persistentHandle, started:Date.now(), paused:false };
+    const receiveChunkSize=request.chunkSize||defaultChunkSize,receiveState=BlinkTransfer.makeReceiveState(request.size,receiveChunkSize);if(!receiveState){notice('transferFailed');return;}const totalChunks=receiveState.totalChunks;
+    active = { ...request, direction:'receive', ...receiveState, committedBytes:0, hasher:new BlinkSHA256(), hashDirty:false, retries:0, chunks:writer ? null : new Array(totalChunks), writer, opfs, persistentHandle, started:Date.now(), paused:false };
     showTransfer(request.relativePath || request.name, request.size);
     await persistReceiveSession();
     channel.send(JSON.stringify({ type:'accept', id:request.id }));
@@ -1016,8 +1017,8 @@
       const writer=await s.handle.createWritable({keepExistingData:true});
       incomingBatch=s.batchId?{id:s.batchId,name:s.batchName,rootHandle:s.batchRootHandle,accepted:true}:null;
       let restoredOpfs=null;if(s.opfs&&s.opfsTempName){const root=await navigator.storage.getDirectory();restoredOpfs={root,handle:s.handle,tempName:s.opfsTempName};}
-      const restoredMap=s.receivedMap instanceof Uint8Array?s.receivedMap:BlinkTransfer.makePrefixBitmap(totalChunks,nextChunk),hashDirty=received!==prefixBytes;
-      active={id:s.transferId,direction:'receive',name:s.name,size:s.size,relativePath:s.relativePath||'',chunkSize:restoredChunk,received,committedBytes:received,nextChunk,receivedMap:restoredMap,hasher:await rebuildReceiveHasher(s.handle,prefixBytes),hashDirty,retries:0,chunks:null,writer,persistentHandle:s.handle,opfs:restoredOpfs,started:Date.now(),paused:true,batchId:s.batchId||null};
+      const restoredMap=s.receivedMap instanceof Uint8Array?s.receivedMap:BlinkTransfer.makePrefixBitmap(totalChunks,nextChunk),restoredState=BlinkTransfer.makeReceiveState(s.size,restoredChunk,restoredMap,nextChunk,received),hashDirty=received!==prefixBytes;if(!restoredState){notice('resumeUnavailable');await discardResume();return;}
+      active={id:s.transferId,direction:'receive',name:s.name,size:s.size,relativePath:s.relativePath||'',...restoredState,committedBytes:received,hasher:await rebuildReceiveHasher(s.handle,prefixBytes),hashDirty,retries:0,chunks:null,writer,persistentHandle:s.handle,opfs:restoredOpfs,started:Date.now(),paused:true,batchId:s.batchId||null};
       showTransfer(s.relativePath || s.name,s.size); active.stage='resuming'; renderTransfer();
     }
     els['resume-card'].hidden=true; resumeSession=null;

@@ -33,3 +33,7 @@ The built-in controls are a baseline, not a complete internet-facing abuse platf
 ## Untrusted peer resource limits
 
 The receiving browser validates peer-controlled metadata before allocating chunk maps, file arrays, folder structures, or text buffers. Current client-side bounds cover file/batch size, file count, path depth and byte length, identifiers, chunk count, resume-range count, control JSON size, queue length, and clipboard framing. Oversized or contradictory messages are rejected before transfer state is created. These limits live in `public/security.js` so protocol handlers and tests use the same definitions.
+
+## Verification boundary
+
+The data channel may exist before a user confirms the six-digit code, but BlinkSend does not treat that as an authorized transfer session. Before mutual verification, the control policy accepts only device hello, verification confirmation, cancellation, and matching resume metadata needed to preserve an already-existing interrupted transfer. New files, folders, clipboard data, benchmarks, completion messages, retries, and save acknowledgements are ignored until the peer is verified.
