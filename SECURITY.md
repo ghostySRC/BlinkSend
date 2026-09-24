@@ -23,6 +23,8 @@ BlinkSend is designed for direct, ephemeral transfers between two browsers.
 - A configured TURN relay carries encrypted WebRTC traffic and can observe connection metadata and traffic volume.
 - Partial-transfer resume works in-page everywhere the transfer path supports it. On browsers that persist File System Access handles in IndexedDB, BlinkSend can also recover the active transfer after a reload once the user grants file access again.
 - Optional device names and transfer history are local browser data; device names are sent only to the currently connected peer unless the user explicitly enables Nearby discovery. Nearby records are limited to the same observed network address, expire after five minutes, expose only the chosen device name plus an ephemeral code, and never bypass the DTLS fingerprint verification step.
+- Web Share Target payloads are intercepted by the service worker and staged in device-local IndexedDB until the user pairs with a receiver; they are not uploaded to the signaling server.
+- QR scanning requests camera permission only after the user presses Scan QR. Microphone and geolocation permissions remain disabled by policy.
 
 ## Public deployment
 

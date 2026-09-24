@@ -1,36 +1,26 @@
 <p align="center"><img src="public/favicon.svg" width="68" alt="BlinkSend logo"></p>
 <h1 align="center">BlinkSend</h1>
 <p align="center">A self-hosted file transfer tool for two browsers.</p>
-<p align="center"><a href="#quick-start">Quick start</a> · <a href="#see-it-in-action">See it in action</a> · <a href="#deploy-your-own-instance">Self-host</a> · <a href="#how-it-works">How it works</a></p>
+<p align="center"><a href="#features">Features</a> · <a href="#quick-start">Quick start</a> · <a href="#how-it-works">How it works</a> · <a href="#deploy-your-own-instance">Self-host</a></p>
 
-<p align="center"><img src="docs/media/desktop.webp" width="900" alt="BlinkSend desktop interface in light mode, with the language and theme controls, QR invite, and file transfer panel"></p>
-<p align="center"><sub>Desktop · English · Light mode</sub></p>
 
-> **Early release:** transfers across real devices and networks still need field testing. There is no public hosted instance yet. The GIFs below are staged captures of the current interface; they show the transfer states, not a verified transfer between devices.
+> **Status:** BlinkSend is an actively developed self-hosted project. The automated suite covers the transfer protocol, signaling abuse controls, integrity checks, PWA metadata, and large-transfer simulations; real-device/browser behavior can still differ by platform APIs.
 
-## See it in action
+## Current flow
 
-### Pair two devices
+1. Open BlinkSend and choose **Send** or **Receive**.
+2. Pair with an invite link, QR code, in-app QR scanner, or optional Nearby discovery.
+3. Compare the same six-digit verification code on both devices and confirm it.
+4. Send files, folders, clipboard text, pasted screenshots/files, or content received from the operating system share sheet.
+5. BlinkSend shows Direct/Relay connection quality, smoothed speed, ETA, current-file progress, and whole-batch progress.
+6. Every file is SHA-256 verified. Interrupted transfers request missing chunk ranges; supported browsers can resume after a page reload.
 
-<p align="center"><img src="docs/media/pairing.gif" width="760" alt="BlinkSend pairing demonstration with the current header, changing from waiting to connecting to connected"></p>
-
-Open the room link on a second device or scan the QR code. The connection indicator changes when both browsers join.
-
-### Receive files
-
-<p align="center"><img src="docs/media/transfer.gif" width="760" alt="BlinkSend transfer demonstration showing an incoming file, receive progress, a second incoming file, and completion"></p>
-
-Select multiple files on the sender, accept each one on the receiver, and follow progress and speed in the browser.
-
-### Language and appearance
-
-<table align="center"><tr><th>English · Light mode</th><th>Svenska · Mörkt läge</th></tr><tr><td><img src="docs/media/mobile.webp" width="300" alt="BlinkSend on a phone in English and light mode"></td><td><img src="docs/media/mobile-dark.webp" width="300" alt="BlinkSend on a phone in Swedish and dark mode"></td></tr></table>
-
-Use the language selector and theme button in the header. BlinkSend remembers both choices on each device; before you choose a theme, it follows your system preference. The same interface adapts to smaller screens. A public HTTPS deployment is required to connect a phone to a computer outside this local preview.
+BlinkSend can also be installed as a PWA on supporting browsers. No account is required, and normal file contents are not stored by the BlinkSend signaling server.
 
 ## Features
 
 - Simple Send / Receive entry flow for computer ↔ computer and phone ↔ computer sharing through an invite link or QR code.
+- Installable PWA on supporting browsers, with an application-shell service worker for fast relaunch. Peer-to-peer transfers still require both devices to be online.
 - In-app QR scanning on browsers that expose the Barcode Detection API and camera access; unsupported browsers can still use the system camera or paste the link.
 - Optional Nearby discovery is off by default. A sender can advertise a device name and short-lived code for five minutes to receivers seen behind the same network address; peer verification is still mandatory.
 - Send one file, several files, or choose an entire folder as a batch. On browsers with the File System Access API, BlinkSend recreates the folder tree automatically under one chosen destination. Dragging folders onto the drop area is also supported through modern File System handles, with a legacy directory-entry fallback where available.
