@@ -33,6 +33,8 @@ Use the language selector and theme button in the header. BlinkSend remembers bo
 - Computer ↔ computer and phone ↔ computer sharing through an invite link or QR code.
 - Send one file, several files, or choose an entire folder as a batch. Folder entries keep their relative path metadata while transferring.
 - Direct encrypted browser-to-browser transfer when the network allows it; optional TURN relay support for harder networks.
+- Peer verification code derived from the WebRTC DTLS fingerprints. Both devices must confirm the same six-digit code before sending is unlocked.
+- Incremental SHA-256 verification for every file. A transfer is only reported as verified after sender and receiver hashes match.
 - Transfer progress, average speed, cancellation, connection status, and clear errors when pairing fails.
 - Send an `http://` or `https://` link directly to the paired device without creating a file first.
 - Higher-throughput WebRTC sending with 64 KiB chunks and a larger buffered send window for fast local networks.
@@ -73,7 +75,7 @@ sequenceDiagram
 
 The Node server serves the web interface and exchanges WebRTC connection details over `/signal`. File contents travel over the WebRTC data channel. When a TURN relay is configured and needed, the relay carries encrypted WebRTC traffic and consumes relay bandwidth. The server keeps room membership in memory, with a maximum of two sockets per room; inactive rooms expire after 30 minutes. A server restart disconnects active rooms.
 
-The recipient must accept each file. Batches are sent sequentially; declining one file moves to the next. This version has no transfer resume or offline delivery. Only one file is active at a time.
+The recipient must accept each file. Batches are sent sequentially; declining one file moves to the next. Files are split into numbered chunks. If the network connection drops while both tabs remain open, BlinkSend keeps the partial transfer state, establishes a new verified peer connection, and continues from the receiver's next missing chunk. A full page reload still loses the in-memory resume state. Offline delivery is not supported, and only one file is active at a time.
 
 ## Browser and file limits
 
@@ -117,13 +119,15 @@ Set both TURN variables on the BlinkSend server. Configure the same shared secre
 
 ## Privacy and security
 
-- The room identifier is random and is included in the invite link. Anyone with the link can join that room, so share it privately and create a new room when needed.
+- The room identifier is random and is included in the invite link. Anyone with the link can attempt to join that room, so share it privately and create a new room when needed.
+- After WebRTC connects, BlinkSend displays a six-digit verification code derived from both DTLS certificate fingerprints. Transfer controls remain locked until the user confirms that both screens show the same code.
+- File contents are verified end-to-end with SHA-256 before BlinkSend reports a verified transfer.
 - WebRTC encrypts the data channel in transit. The BlinkSend server forwards connection details, but its normal transfer path does not receive file contents.
 - The receiving browser sees a filename and size before accepting. The signaling server does not need the file bytes or filename to pair devices.
 - A TURN server, if enabled, carries encrypted traffic and can observe connection metadata and traffic volume.
 - Files are not uploaded for later retrieval. Both participants must be online at the same time.
 
-BlinkSend is currently designed for trusted, small-scale deployment. A public instance should add operational controls such as traffic limits, TURN usage monitoring, and abuse protection before wide promotion.
+BlinkSend includes in-memory per-IP limits for room joins, WebSocket upgrades, QR generation, and ICE credential requests; malformed signaling is rejected and abusive sockets are closed. TURN credentials require a short-lived token issued through a successful room join. These controls are intentionally lightweight and single-process: a serious public deployment should also add reverse-proxy/CDN rate limiting, centralized abuse monitoring, TURN bandwidth quotas, and shared state before horizontal scaling.
 
 ## Troubleshooting
 
