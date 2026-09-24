@@ -1,6 +1,9 @@
 importScripts('/sha256.js');
 
+let handle=null;
 let access=null;
+let writable=null;
+let backend='';
 let hasher=null;
 let hashDirty=false;
 let nextHashOffset=0;
@@ -15,32 +18,56 @@ function ensureScratch(bytes){
   return scratch;
 }
 
-async function init(handle,{truncate=false,resumeBytes=0}={}){
-  access=await handle.createSyncAccessHandle();
-  if(truncate)access.truncate(0);
-  hasher=new BlinkSHA256();
-  hashDirty=false;
-  nextHashOffset=0;
-  if(resumeBytes>0){
-    const blockSize=8*1024*1024;
-    const buffer=new Uint8Array(blockSize);
+async function hashPrefix(bytes){
+  hasher=new BlinkSHA256();hashDirty=false;nextHashOffset=0;
+  if(!(bytes>0))return;
+  if(access){
+    const blockSize=8*1024*1024,buffer=new Uint8Array(blockSize);
     let offset=0;
-    while(offset<resumeBytes){
-      const length=Math.min(blockSize,resumeBytes-offset);
-      const view=length===buffer.byteLength?buffer:buffer.subarray(0,length);
+    while(offset<bytes){
+      const length=Math.min(blockSize,bytes-offset),view=length===buffer.byteLength?buffer:buffer.subarray(0,length);
       const read=access.read(view,{at:offset});
       if(read!==length)throw new Error('Could not rebuild OPFS hash state');
-      hasher.update(view);
-      offset+=read;
+      hasher.update(view);offset+=read;
     }
-    nextHashOffset=resumeBytes;
+    nextHashOffset=bytes;return;
   }
-  initialized=true;
-  postMessage({type:'ready'});
+  const file=await handle.getFile(),blockSize=8*1024*1024;
+  let offset=0;
+  while(offset<bytes){
+    const end=Math.min(bytes,offset+blockSize),buffer=await file.slice(offset,end).arrayBuffer();
+    hasher.update(new Uint8Array(buffer));offset=end;
+  }
+  nextHashOffset=bytes;
 }
 
-function writeBatch(start,total,entries){
-  if(!initialized||!access)throw new Error('Worker is not initialized');
+async function openBackend(fileHandle,{truncate=false,resumeBytes=0}={}){
+  handle=fileHandle;
+  backend='';
+  try{
+    access=await handle.createSyncAccessHandle();
+    backend='sync';
+    if(truncate)access.truncate(0);
+    await hashPrefix(resumeBytes);
+    return;
+  }catch{
+    access=null;
+  }
+  // createWritable() is also available in dedicated workers in current browsers.
+  // Keep it in the worker so the page main thread never becomes the storage hot path.
+  if(resumeBytes>0)await hashPrefix(resumeBytes);else{hasher=new BlinkSHA256();hashDirty=false;nextHashOffset=0;}
+  writable=await handle.createWritable({keepExistingData:!truncate});
+  backend='stream';
+}
+
+async function init(fileHandle,{truncate=false,resumeBytes=0}={}){
+  await openBackend(fileHandle,{truncate,resumeBytes});
+  initialized=true;
+  postMessage({type:'ready',backend});
+}
+
+async function writeBatch(start,total,entries){
+  if(!initialized||(!access&&!writable))throw new Error('Worker is not initialized');
   if(!Number.isSafeInteger(start)||start<0||!Number.isSafeInteger(total)||total<0||!Array.isArray(entries))throw new Error('Invalid write batch');
   const target=ensureScratch(total);
   let cursor=0;
@@ -48,34 +75,63 @@ function writeBatch(start,total,entries){
   for(const entry of entries){
     const byteOffset=Number(entry.byteOffset)||0,byteLength=Number(entry.byteLength)||0;
     if(!(entry.buffer instanceof ArrayBuffer)||byteOffset<0||byteLength<0||byteOffset+byteLength>entry.buffer.byteLength)throw new Error('Invalid write entry');
-    const view=new Uint8Array(entry.buffer,byteOffset,byteLength);
-    target.set(view,cursor);cursor+=byteLength;
+    target.set(new Uint8Array(entry.buffer,byteOffset,byteLength),cursor);cursor+=byteLength;
   }
   if(cursor!==total)throw new Error('Write batch length mismatch');
   const view=target.subarray(0,total);
-  const written=access.write(view,{at:start});
-  if(written!==view.byteLength)throw new Error('Short OPFS write');
+  let written;
+  if(access){
+    written=access.write(view,{at:start});
+    if(written!==view.byteLength)throw new Error('Short OPFS write');
+  }else{
+    await writable.write({type:'write',position:start,data:view});
+    written=view.byteLength;
+  }
   if(!hashDirty&&start===nextHashOffset){
-    hasher.update(view);
-    nextHashOffset+=view.byteLength;
+    hasher.update(view);nextHashOffset+=view.byteLength;
   }else if(start!==nextHashOffset){
     hashDirty=true;
   }
-  return {bytes:view.byteLength,writeMs:performance.now()-started};
+  return {bytes:written,writeMs:performance.now()-started,backend};
 }
 
-function hashWhole(size){
-  const blockSize=8*1024*1024,buffer=new Uint8Array(blockSize),h=new BlinkSHA256();
-  let offset=0;
+async function durableCheckpoint(){
+  if(access){access.flush();return;}
+  if(writable){
+    await writable.close();
+    writable=await handle.createWritable({keepExistingData:true});
+  }
+}
+
+async function closeBackend(){
+  if(access){try{access.flush();}catch{}try{access.close();}catch{}access=null;}
+  if(writable){try{await writable.close();}catch{}writable=null;}
+}
+
+async function hashWhole(size){
+  const h=new BlinkSHA256(),blockSize=8*1024*1024;
+  if(access){
+    const buffer=new Uint8Array(blockSize);let offset=0;
+    while(offset<size){
+      const length=Math.min(blockSize,size-offset),view=length===buffer.byteLength?buffer:buffer.subarray(0,length);
+      const read=access.read(view,{at:offset});if(read!==length)throw new Error('Short OPFS read while verifying');
+      h.update(view);offset+=read;
+    }
+    return h.hex();
+  }
+  if(writable){await writable.close();writable=null;}
+  const file=await handle.getFile();let offset=0;
   while(offset<size){
-    const length=Math.min(blockSize,size-offset);
-    const view=length===buffer.byteLength?buffer:buffer.subarray(0,length);
-    const read=access.read(view,{at:offset});
-    if(read!==length)throw new Error('Short OPFS read while verifying');
-    h.update(view);
-    offset+=read;
+    const end=Math.min(size,offset+blockSize),buffer=await file.slice(offset,end).arrayBuffer();
+    if(buffer.byteLength!==end-offset)throw new Error('Short OPFS read while verifying');
+    h.update(new Uint8Array(buffer));offset=end;
   }
   return h.hex();
+}
+
+async function reset(){
+  await closeBackend();
+  await openBackend(handle,{truncate:true,resumeBytes:0});
 }
 
 onmessage=async event=>{
@@ -86,38 +142,35 @@ onmessage=async event=>{
       return;
     }
     if(msg.type==='write-batch'){
-      const result=writeBatch(Number(msg.start)||0,Number(msg.total)||0,msg.entries||[]);
+      const result=await writeBatch(Number(msg.start)||0,Number(msg.total)||0,msg.entries||[]);
       postMessage({type:'written',id:msg.id,...result});
       return;
     }
     if(msg.type==='flush'){
-      access?.flush();
-      postMessage({type:'flushed',id:msg.id});
+      await durableCheckpoint();
+      postMessage({type:'flushed',id:msg.id,backend});
       return;
     }
     if(msg.type==='reset'){
-      access?.truncate(0);
-      hasher=new BlinkSHA256();hashDirty=false;nextHashOffset=0;
-      postMessage({type:'reset',id:msg.id});
+      await reset();
+      postMessage({type:'reset',id:msg.id,backend});
       return;
     }
     if(msg.type==='finalize'){
       const size=Number(msg.size)||0;
-      access?.flush();
-      const hash=!hashDirty&&nextHashOffset===size?hasher.hex():hashWhole(size);
-      access?.close();access=null;initialized=false;
-      postMessage({type:'finalized',id:msg.id,hash});
+      if(access)access.flush();
+      const hash=!hashDirty&&nextHashOffset===size?hasher.hex():await hashWhole(size);
+      await closeBackend();initialized=false;
+      postMessage({type:'finalized',id:msg.id,hash,backend});
       return;
     }
     if(msg.type==='close'){
-      try{access?.flush();}catch{}
-      try{access?.close();}catch{}
-      access=null;initialized=false;
+      await closeBackend();initialized=false;
       postMessage({type:'closed',id:msg.id});
     }
   }catch(error){
-    try{access?.close();}catch{}
-    access=null;initialized=false;
+    await closeBackend().catch(()=>{});
+    initialized=false;
     postMessage({type:'error',id:msg.id||'',message:String(error?.message||error)});
   }
 };
