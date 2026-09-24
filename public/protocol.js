@@ -17,6 +17,21 @@
     if(m<60)return s?`${m}m ${s}s`:`${m}m`;
     const h=Math.floor(m/60),rm=m%60;return rm?`${h}h ${rm}m`:`${h}h`;
   }
+  function updateTransferEstimate(previous,{bytes=0,total=0,started=0,label='',now=0,windowMs=8000,minSpanMs=1000}={}){
+    bytes=Math.max(0,Number(bytes)||0);total=Math.max(bytes,Number(total)||0);now=Number(now)||0;
+    const compatible=previous&&previous.label===label&&bytes>=previous.bytes&&Array.isArray(previous.samples)&&now-(previous.sampleAt||now)<=3000;
+    const samples=compatible?previous.samples.filter(sample=>sample&&Number.isFinite(sample.at)&&Number.isFinite(sample.bytes)).map(sample=>({at:sample.at,bytes:sample.bytes})):[];
+    samples.push({at:now,bytes});
+    const cutoff=now-windowMs;
+    while(samples.length>2&&samples[1].at<=cutoff)samples.shift();
+    const first=samples[0],spanMs=Math.max(0,now-first.at),moved=Math.max(0,bytes-first.bytes);
+    let speed=0,etaSeconds=Infinity;
+    if(spanMs>=minSpanMs&&moved>0){
+      speed=moved/(spanMs/1000);
+      if(Number.isFinite(speed)&&speed>0)etaSeconds=Math.max(0,(total-bytes)/speed);else speed=0;
+    }
+    return {bytes,total,started,label,speed,etaSeconds,samples,sampleAt:now};
+  }
   function connectionQuality({rttMs=0,throughputBps=0,relayed=false}={}){
     if(!rttMs&&!throughputBps)return 'unknown';
     if(rttMs>300||(throughputBps&&throughputBps<512*KiB))return 'poor';
@@ -38,5 +53,5 @@
     text=String(text||'');if(!text)return [];const enc=new TextEncoder(),out=[];let part='',bytes=0;
     for(const ch of text){const n=enc.encode(ch).byteLength;if(n>maxBytes)throw new Error('character exceeds chunk size');if(bytes+n>maxBytes&&part){out.push(part);part='';bytes=0;}part+=ch;bytes+=n;}if(part)out.push(part);return out;
   }
-  window.BlinkProtocol={chooseTuning,formatEta,connectionQuality,missingRanges,markChunk,splitUtf8};
+  window.BlinkProtocol={chooseTuning,formatEta,updateTransferEstimate,connectionQuality,missingRanges,markChunk,splitUtf8};
 })();

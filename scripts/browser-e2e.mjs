@@ -55,7 +55,22 @@ try{
   const received=(await receiver.locator('#received-content').textContent()).trim();
   if(received!==message)throw new Error('clipboard message mismatch');
 
-  console.log(JSON.stringify({browser:browserName,pairingCode:true,verificationCode:true,webrtcText:true},null,2));
+  const mobileContext=await browser.newContext({viewport:{width:390,height:844},locale:'es-ES'});
+  const mobile=await mobileContext.newPage();await mobile.goto(base,{waitUntil:'domcontentloaded'});
+  if(await mobile.locator('#language').inputValue()!=='es')throw new Error('browser locale did not select Spanish');
+  if((await mobile.locator('[data-i18n="headline"]').textContent()).trim()!=='Mueve archivos directamente.')throw new Error('Spanish UI pack did not apply');
+  const layout=await mobile.evaluate(()=>({overflow:document.documentElement.scrollWidth-document.documentElement.clientWidth,topbar:(()=>{const r=document.querySelector('.topbar').getBoundingClientRect();return {top:r.top,bottom:r.bottom,left:r.left,right:r.right}})(),children:[...document.querySelector('.topbar').children].filter(el=>getComputedStyle(el).display!=='none').map(el=>{const r=el.getBoundingClientRect();return {top:r.top,bottom:r.bottom,left:r.left,right:r.right}})}));
+  if(layout.overflow>1)throw new Error('mobile header causes horizontal overflow');
+  for(const box of layout.children){if(box.left<layout.topbar.left-1||box.right>layout.topbar.right+1||box.top<layout.topbar.top-1||box.bottom>layout.topbar.bottom+1)throw new Error('mobile header child escapes topbar');}
+  await mobileContext.close();
+
+  const fallbackContext=await browser.newContext({locale:'pl-PL'});const fallback=await fallbackContext.newPage();await fallback.goto(base,{waitUntil:'domcontentloaded'});
+  if(await fallback.locator('#language').inputValue()!=='en')throw new Error('unsupported browser locale did not fall back to English');await fallbackContext.close();
+
+  const rtlContext=await browser.newContext({locale:'ar-SA'});const rtl=await rtlContext.newPage();await rtl.goto(base,{waitUntil:'domcontentloaded'});
+  if(await rtl.locator('#language').inputValue()!=='ar'||await rtl.locator('html').getAttribute('dir')!=='rtl')throw new Error('Arabic locale/RTL did not apply');await rtlContext.close();
+
+  console.log(JSON.stringify({browser:browserName,pairingCode:true,verificationCode:true,webrtcText:true,mobileLayout:true,browserLocale:true,rtl:true},null,2));
   await Promise.all([senderContext.close(),receiverContext.close()]);
 }finally{
   await browser?.close().catch(()=>{});

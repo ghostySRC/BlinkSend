@@ -22,3 +22,18 @@ test('ETA formatting and missing ranges are deterministic',async()=>{
 test('connection quality degrades for high RTT',async()=>{
   const p=await loadProtocol();assert.equal(p.connectionQuality({rttMs:350,throughputBps:10*1024*1024,relayed:false}),'poor');
 });
+test('transfer ETA uses measured recent throughput and resets after a stall',async()=>{
+  const p=await loadProtocol();
+  let state=p.updateTransferEstimate(null,{bytes:0,total:10*1024*1024,label:'sending',now:0});
+  state=p.updateTransferEstimate(state,{bytes:1024*1024,total:10*1024*1024,label:'sending',now:1000});
+  assert.equal(Math.round(state.speed),1024*1024);
+  assert.equal(Math.round(state.etaSeconds),9);
+  state=p.updateTransferEstimate(state,{bytes:2*1024*1024,total:10*1024*1024,label:'sending',now:2000});
+  assert.equal(Math.round(state.etaSeconds),8);
+  state=p.updateTransferEstimate(state,{bytes:3*1024*1024,total:10*1024*1024,label:'sending',now:7000});
+  assert.equal(state.speed,0);
+  assert.equal(state.etaSeconds,Infinity);
+  state=p.updateTransferEstimate(state,{bytes:4*1024*1024,total:10*1024*1024,label:'sending',now:8000});
+  assert.equal(Math.round(state.speed),1024*1024);
+  assert.equal(Math.round(state.etaSeconds),6);
+});

@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.4.0-beta.2 — mobile layout, localization, and ETA accuracy
+
+### UI and localization
+- Fix the cramped mobile header shown on narrow phones by allowing the header controls to wrap cleanly without overlap or horizontal overflow.
+- Choose the initial language from the browser's ordered locale preferences; unsupported locales fall back to English, while an explicit user choice remains saved locally.
+- Add complete Spanish, French, German, Portuguese, Simplified Chinese, Japanese, and Arabic UI packs alongside English and Swedish.
+- Apply right-to-left document direction for Arabic.
+- Add automated mobile-layout, locale-selection, fallback, RTL, key-completeness, and placeholder-integrity checks.
+
+### Transfer accuracy and update reliability
+- Replace the per-chunk smoothed ETA with a measured 8-second recent-throughput window. After a multi-second stall the estimate resets and waits for fresh transfer data instead of racing to catch up.
+- Refresh the service-worker shell cache and switch shell assets to network-first while online, preventing old JavaScript/CSS from remaining stuck after a deployment.
+
 ## 0.4.0-beta.1 — reliability and hostile-peer hardening
 
 ### Security and protocol

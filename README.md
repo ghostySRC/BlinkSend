@@ -11,7 +11,7 @@
   <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
 </p>
 
-<p align="center"><strong>0.4.0-beta.1</strong> · WebRTC · resumable transfers · SHA-256 verification · self-hostable</p>
+<p align="center"><strong>0.4.0-beta.2</strong> · WebRTC · resumable transfers · SHA-256 verification · self-hostable</p>
 <p align="center"><strong><a href="https://blinksend-production.up.railway.app">Try BlinkSend live</a></strong> · <a href="#see-it-in-action">Demo</a> · <a href="#why-blinksend">Why BlinkSend</a> · <a href="#quick-start">Quick start</a> · <a href="#deploy-your-own-instance">Self-host</a> · <a href="COMPATIBILITY.md">Compatibility</a></p>
 
 > **Live demo:** https://blinksend-production.up.railway.app  
@@ -97,9 +97,9 @@ BlinkSend can also be installed as a PWA on supporting browsers. No account is r
 - Send clipboard text, commands, snippets, or `http://` / `https://` links directly to the paired device without creating a file first. Text is capped at 256 KB and framed into small UTF-8 control messages instead of relying on one oversized SCTP message.
 - Paste-to-send: when the sender page is focused, pasting a clipboard file/image queues it; pasting text sends it directly.
 - Automatic connection calibration after peer verification: BlinkSend measures a small 512 KiB WebRTC sample, combines it with RTT/device capability, and tunes the data-channel buffer automatically. Transfer chunks remain conservatively capped at 64 KiB for browser compatibility.
-- Live transfer speed uses smoothing instead of a noisy instant value, includes an ETA, and folder batches show whole-batch bytes plus the current file.
+- Live transfer speed and ETA use an actual recent-throughput window instead of an accelerating per-chunk estimate; the ETA resets after a stall/reconnect until enough fresh data is available. Folder batches show whole-batch bytes plus the current file.
 - Connection status reports Direct vs Relay plus a simple Excellent / Good / Fair / Poor quality label based on measured RTT and throughput.
-- English and Swedish interface, plus light and dark modes. Your choices are saved on each device; the initial theme follows your system setting.
+- Interface translations for English, Swedish, Spanish, French, German, Portuguese, Simplified Chinese, Japanese, and Arabic, plus light and dark modes. On first visit BlinkSend follows the browser's preferred supported language and falls back to English for unsupported locales; a manual language choice is saved on that device. The initial theme follows your system setting.
 - Your device nickname is stored locally and sent only to the connected peer. BlinkSend also keeps a small local list of recent peer names for recognition and includes the peer name in local transfer history. These labels are not cryptographic identities. Optional completion sound/vibration stays off unless enabled.
 - Local-only transfer history keeps the latest verified file transfers and text sends in IndexedDB; it can be cleared from Settings.
 - Received files can be handed to the operating system's native share sheet when the browser supports Web Share files.

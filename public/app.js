@@ -345,10 +345,19 @@
     "light": "Ljust"
   }
 };
+  Object.assign(translations, window.BlinkLocalePacks || {});
+  const localeMeta = window.BlinkLocaleMeta || { names: { en: 'English', sv: 'Svenska' }, titles: {}, resolve: () => 'en' };
   const readSetting = key => { try { return localStorage.getItem(key); } catch { return null; } };
   const saveSetting = (key, value) => { try { localStorage.setItem(key, value); } catch { /* Private browsing may disable storage. */ } };
-  let language = readSetting('blinksend-language') || (navigator.language?.toLowerCase().startsWith('sv') ? 'sv' : 'en');
+  const storedLanguage = readSetting('blinksend-language');
+  const browserLocales = [...(navigator.languages || []), navigator.language, Intl.DateTimeFormat?.().resolvedOptions?.().locale].filter(Boolean);
+  let language = storedLanguage && translations[storedLanguage] ? storedLanguage : localeMeta.resolve(browserLocales);
   if (!translations[language]) language = 'en';
+  const languageSelect = $('language');
+  const languageCodes = Object.keys(localeMeta.names || {}).filter(code => translations[code]);
+  languageSelect.replaceChildren(...languageCodes.map(code => {
+    const option = document.createElement('option'); option.value = code; option.textContent = localeMeta.names[code] || code; return option;
+  }));
   const systemTheme = matchMedia('(prefers-color-scheme: dark)');
   let theme = readSetting('blinksend-theme') || (systemTheme.matches ? 'dark' : 'light');
   if (!['dark', 'light'].includes(theme)) theme = 'light';
@@ -363,9 +372,10 @@
   }
   function applyLanguage() {
     document.documentElement.lang = language;
-    document.title = language === 'sv' ? 'BlinkSend — Filöverföring' : 'BlinkSend — File transfer';
-    $('language').value = language;
-    $('language').ariaLabel = tr('language');
+    document.documentElement.dir = language === 'ar' ? 'rtl' : 'ltr';
+    document.title = localeMeta.titles?.[language] || 'BlinkSend — File transfer';
+    languageSelect.value = language;
+    languageSelect.ariaLabel = tr('language');
     document.querySelectorAll('[data-i18n]').forEach(el => { el.textContent = tr(el.dataset.i18n); });
     document.querySelectorAll('[data-i18n-alt]').forEach(el => { el.alt = tr(el.dataset.i18nAlt); });
     document.querySelectorAll('[data-i18n-aria]').forEach(el => { el.ariaLabel = tr(el.dataset.i18nAria); });
@@ -377,7 +387,7 @@
     if (els.copy.dataset.copied) els.copy.textContent = tr('copied');
     applyTheme();
   }
-  $('language').onchange = e => { language = e.target.value; saveSetting('blinksend-language', language); applyLanguage(); };
+  languageSelect.onchange = e => { language = translations[e.target.value] ? e.target.value : 'en'; saveSetting('blinksend-language', language); applyLanguage(); };
   $('theme-toggle').onclick = () => { theme = theme === 'dark' ? 'light' : 'dark'; saveSetting('blinksend-theme', theme); applyTheme(); };
   systemTheme.addEventListener?.('change', e => { if (!readSetting('blinksend-theme')) { theme = e.matches ? 'dark' : 'light'; applyTheme(); } });
   function updateSaveNote() {
@@ -387,8 +397,7 @@
     els['queue-status'].textContent = tr('queue', { current: batchDone + 1, total: batchTotal, remaining: outgoing.length });
     els.cancel.textContent = tr(batchTotal > 1 && active?.direction === 'send' ? 'cancelBatch' : 'cancel');
     if (progressState) {
-      const { bytes, total, label, speed=0 } = progressState;
-      const etaSeconds=speed>0?(total-bytes)/speed:Infinity;
+      const { bytes, total, label, speed=0, etaSeconds=Infinity } = progressState;
       const eta=Number.isFinite(etaSeconds)&&etaSeconds>=1?tr('etaSuffix',{eta:BlinkProtocol.formatEta(etaSeconds)}):'';
       els['progress-text'].textContent = tr('speed', { label: tr(label), bytes: format(bytes), total: format(total), speed: format(speed), eta });
     } else els['progress-text'].textContent = tr(active?.stage || 'starting');
@@ -588,13 +597,7 @@
   }
   function progress(bytes,total,started,label){
     els.progress.value=total?Math.min(100,bytes/total*100):100;
-    const now=performance.now(),prev=progressState;
-    let speed=prev?.speed||0;
-    if(prev&&prev.label===label&&bytes>=prev.bytes){
-      const dt=(now-(prev.sampleAt||now))/1000,delta=bytes-prev.bytes;
-      if(dt>.08&&delta>=0){const instant=delta/dt;speed=speed?speed*.72+instant*.28:instant;}
-    } else if(bytes>0) speed=bytes/Math.max(.25,(Date.now()-started)/1000);
-    progressState={bytes,total,started,label,speed,sampleAt:now};
+    progressState=BlinkProtocol.updateTransferEstimate(progressState,{bytes,total,started,label,now:performance.now()});
     renderTransfer();
   }
   function stopTransfer(message, notify = true, preserveQueue = false, vars = {}) {
