@@ -25,7 +25,7 @@
   <img src="docs/media/pairing.gif" width="720" alt="Animated BlinkSend pairing walkthrough with manual code and peer verification">
 </p>
 
-The pairing demo shows the current flow: enter the temporary eight-character code, compare the same six-digit DTLS fingerprint code on both devices, then confirm **Codes match**. The oversized cursor, eased movement, click ripples, and action labels are intentionally part of the walkthrough so the flow stays readable even when the GIF is viewed small.
+The pairing demo is recorded from two real BlinkSend Chromium sessions using the actual signaling and verification flow. The only added documentation layer is the oversized cursor, eased movement, click ripple, and short action label so the interaction stays readable on GitHub.
 
 ### Send, watch progress, verify
 
@@ -33,9 +33,9 @@ The pairing demo shows the current flow: enter the temporary eight-character cod
   <img src="docs/media/transfer.gif" width="720" alt="Animated BlinkSend transfer walkthrough with speed, ETA, progress and SHA-256 verification">
 </p>
 
-The transfer demo highlights Direct connection quality, live speed/ETA, whole-transfer progress, and the final SHA-256 verified state. The filenames, speeds, codes, and times shown in the documentation renders are illustrative rather than benchmark claims.
+The transfer demo is also captured from the running app: two real browser sessions pair, transfer a real local test file over BlinkSend's WebRTC path, display the live progress/speed/ETA UI, and reach the SHA-256 verified completion state. The test filename and measured speed are demonstration data, not benchmark claims.
 
-The README media is reproducible: `scripts/generate-readme-media.py` renders these assets, and the dedicated **Refresh README media** workflow can regenerate and commit them on demand after UI changes.
+The README media is reproducible: `scripts/capture-readme-media.mjs` launches the real BlinkSend server and Chromium, then the on-demand **Refresh README media** workflow captures and commits fresh browser screenshots plus 30 FPS GIFs after UI changes.
 
 ## Current flow
 
