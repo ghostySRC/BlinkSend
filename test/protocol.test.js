@@ -59,3 +59,10 @@ test('receiver-aware flow window stays conservative on weak devices and expands 
   assert.ok(fast.receiveWindow>=32*1024*1024);
   assert.ok(fast.flowAckBytes<fast.receiveWindow);
 });
+
+test('unknown device memory uses a conservative receive window without slowing sender buffering',async()=>{
+  const p=await loadProtocol();
+  const t=p.chooseTuning({throughputBps:40*1024*1024,rttMs:25,deviceMemory:0,cores:6,maxMessageSize:262144});
+  assert.equal(t.receiveWindow,16*1024*1024);
+  assert.ok(t.highWater>=16*1024*1024);
+});
