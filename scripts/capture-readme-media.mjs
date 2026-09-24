@@ -92,12 +92,17 @@ function gifPair(a,b,output){
 }
 
 async function staticShots(){
+  const desktopPng=path.join(tmp,'desktop.png'),mobilePng=path.join(tmp,'mobile.png'),mobileDarkPng=path.join(tmp,'mobile-dark.png');
   const ctx=await browser.newContext({viewport:{width:1280,height:820},deviceScaleFactor:1});
-  const p=await ctx.newPage();await p.goto(base,{waitUntil:'networkidle'});await p.screenshot({path:path.join(media,'desktop.webp'),type:'webp',quality:88,fullPage:false});await ctx.close();
+  const p=await ctx.newPage();await p.goto(base,{waitUntil:'networkidle'});await p.screenshot({path:desktopPng,type:'png',fullPage:false});await ctx.close();
 
   const mobile=await browser.newContext({viewport:{width:390,height:844},deviceScaleFactor:1,isMobile:true});
-  const m=await mobile.newPage();await m.goto(base,{waitUntil:'networkidle'});await m.screenshot({path:path.join(media,'mobile.webp'),type:'webp',quality:88});
-  await m.locator('#theme-toggle').click();await m.waitForTimeout(250);await m.screenshot({path:path.join(media,'mobile-dark.webp'),type:'webp',quality:88});await mobile.close();
+  const m=await mobile.newPage();await m.goto(base,{waitUntil:'networkidle'});await m.screenshot({path:mobilePng,type:'png'});
+  await m.locator('#theme-toggle').click();await m.waitForTimeout(250);await m.screenshot({path:mobileDarkPng,type:'png'});await mobile.close();
+
+  ff(['-i',desktopPng,'-c:v','libwebp','-quality','88',path.join(media,'desktop.webp')]);
+  ff(['-i',mobilePng,'-c:v','libwebp','-quality','88',path.join(media,'mobile.webp')]);
+  ff(['-i',mobileDarkPng,'-c:v','libwebp','-quality','88',path.join(media,'mobile-dark.webp')]);
 }
 
 async function makePair(){
