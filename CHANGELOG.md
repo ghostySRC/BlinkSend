@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.4.0-beta.6 — end-to-end LAN pipeline optimization
+
+### Speed and hot-path fixes
+- Remove the remaining main-thread copy on OPFS receives. DataChannel ArrayBuffers are transferred to the receive worker in batches; batch assembly, hashing, and synchronous OPFS writes happen entirely off the UI thread.
+- Add a dedicated sender hash worker so SHA-256 runs concurrently with WebRTC instead of synchronously blocking each multi-megabyte sender read before packets can be queued.
+- Keep the full-file sender hash alive across reconnect, missing-range resume, and verification retry instead of re-hashing large files on the main thread during recovery.
+- Make connection calibration one-way in the real Send → Receive direction and increase the sample from 2 MiB to 8 MiB, avoiding two simultaneous benchmarks competing for Wi-Fi airtime.
+- Detect low-RTT direct host-to-host LAN paths and open a larger pipeline: up to 48 MiB DataChannel buffering and 32 MiB sender read-ahead while receiver-credit flow control remains authoritative.
+- Self-tune the receiver credit window from actual committed write/hash batch time, growing toward 64 MiB when storage keeps up and shrinking when the destination is genuinely slow.
+- Expose likely LAN routing plus current receive window and committed write speed in Diagnostics so real-device bottlenecks can be identified instead of guessed.
+- Add a second verified file transfer to every browser E2E run to catch leaked workers and broken session reuse after a high-throughput transfer.
+- Cache the new sender hash worker and bump the PWA shell cache to v6.
+
 ## 0.4.0-beta.5 — high-speed phone / OPFS receive path
 
 ### LAN and large-file performance

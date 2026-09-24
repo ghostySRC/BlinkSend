@@ -11,7 +11,7 @@
   <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
 </p>
 
-<p align="center"><strong>0.4.0-beta.5</strong> · WebRTC · resumable transfers · SHA-256 verification · self-hostable</p>
+<p align="center"><strong>0.4.0-beta.6</strong> · WebRTC · resumable transfers · SHA-256 verification · self-hostable</p>
 <p align="center"><strong><a href="https://blinksend-production.up.railway.app">Try BlinkSend live</a></strong> · <a href="#see-it-in-action">Demo</a> · <a href="#why-blinksend">Why BlinkSend</a> · <a href="#quick-start">Quick start</a> · <a href="#deploy-your-own-instance">Self-host</a> · <a href="COMPATIBILITY.md">Compatibility</a></p>
 
 > **Live demo:** https://blinksend-production.up.railway.app  
@@ -85,7 +85,7 @@ BlinkSend can also be installed as a PWA on supporting browsers. No account is r
 - Send one file, several files, or choose an entire folder as a batch. On browsers with the File System Access API, BlinkSend recreates the folder tree automatically under one chosen destination. Dragging folders onto the drop area is also supported through modern File System handles, with a legacy directory-entry fallback where available.
 - Direct encrypted browser-to-browser transfer when the network allows it; optional TURN relay support for harder networks.
 - Peer verification code derived from the WebRTC DTLS fingerprints. Both devices must confirm the same six-digit code before sending is unlocked.
-- Incremental SHA-256 verification for every file. A transfer is only reported as verified after sender and receiver hashes match; the streaming hasher processes full blocks directly from transfer buffers to keep integrity checking off the throughput critical path as much as possible.
+- Incremental SHA-256 verification for every file. A transfer is only reported as verified after sender and receiver hashes match. Sender hashing now runs concurrently in a dedicated worker instead of pausing the send loop, while OPFS receivers hash alongside disk writes in their receive worker.
 - Transfer progress, average speed, cancellation, connection status, and clear errors when pairing fails.
 - Pending individual files are shown in a visible queue and can be reordered, removed, or cleared while another file is sending. New individual files can be appended mid-transfer, and the picker resets after every enqueue so the same file can be added again if wanted; folders start only when the current file queue is idle. Accepted folder batches lock their membership so sender and receiver stay consistent.
 - A verified sender session stays connected after completion and exposes **Send another**, so repeated transfers do not require pairing again.
@@ -104,7 +104,7 @@ BlinkSend can also be installed as a PWA on supporting browsers. No account is r
 - Local-only transfer history keeps the latest verified file transfers and text sends in IndexedDB; it can be cleared from Settings.
 - Received files can be handed to the operating system's native share sheet when the browser supports Web Share files.
 - On platforms that support the Web Share Target API, BlinkSend can appear in the system Share menu. Shared files/text are intercepted locally by the service worker, staged in device-local IndexedDB, and then sent through the normal peer-to-peer flow after pairing.
-- Large files stream to disk instead of accumulating in page memory. On OPFS-capable browsers, BlinkSend uses a dedicated Worker plus `FileSystemSyncAccessHandle` for the high-speed path, keeping synchronous disk I/O and receive-side SHA-256 work off the main UI thread; a bounded memory download remains the fallback where disk streaming is unavailable.
+- Large files stream to disk instead of accumulating in page memory. On OPFS-capable browsers, BlinkSend uses a dedicated Worker plus `FileSystemSyncAccessHandle` for the high-speed path. Receive batches are handed to that worker without first merging/copying them on the UI thread; assembly, synchronous disk I/O, and receive-side SHA-256 stay off the main thread. A bounded memory download remains the fallback where disk streaming is unavailable.
 - Two participants per room, random 128-bit room links, no accounts, and no server-side file storage.
 
 ## Quick start
@@ -150,7 +150,7 @@ For normal files, the recipient accepts the transfer before data starts. Folder 
 | No save picker, but supports Origin Private File System (OPFS) | Streams large files into temporary browser-managed disk storage, then starts the download | Up to the current 256 GiB safety cap; available storage/quota and browser limits still apply |
 | No save picker and no OPFS | Buffers the file in memory, then starts a download | 200 MB per file |
 
-The 200 MB memory fallback applies only when the browser exposes neither a save-file picker nor OPFS. Independent anti-resource-exhaustion limits currently cap a single announced file at 256 GiB and an accepted batch at 10,000 files / 512 GiB. Transfer speed depends on Wi-Fi/LAN quality, browser and storage performance, and whether a relay is required. When peers are directly connected on the same LAN, internet upload/download speed is not the transfer ceiling. BlinkSend performs a post-verification calibration, uses the negotiated SCTP message-size ceiling, and adapts its send buffer, file read-ahead, and receiver write batching. Direct same-LAN transfers can be much faster than internet-routed transfers, but BlinkSend does not promise a fixed speed.
+The 200 MB memory fallback applies only when the browser exposes neither a save-file picker nor OPFS. Independent anti-resource-exhaustion limits currently cap a single announced file at 256 GiB and an accepted batch at 10,000 files / 512 GiB. Transfer speed depends on Wi-Fi/LAN quality, browser and storage performance, and whether a relay is required. When peers are directly connected on the same LAN, internet upload/download speed is not the transfer ceiling. BlinkSend performs a one-way post-verification calibration in the actual send direction, recognizes low-latency direct host-to-host LAN paths, uses the negotiated SCTP message-size ceiling, and adapts its send buffer, file read-ahead, receiver write batching, and receiver-credit window from measured committed write speed. Direct same-LAN transfers can be much faster than internet-routed transfers, but BlinkSend does not promise a fixed speed.
 
 ## Deploy your own instance
 
