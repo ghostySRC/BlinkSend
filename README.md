@@ -91,6 +91,18 @@ The 200 MB memory fallback now applies only when the browser exposes neither a s
 
 ## Deploy your own instance
 
+BlinkSend now includes a production-oriented `Dockerfile`, `compose.yaml`, and `deploy/Caddyfile.example`. The container runs as the unprivileged Node user, drops Linux capabilities in Compose, uses a read-only root filesystem, and exposes a health check.
+
+### Docker / Compose
+
+```bash
+docker compose up -d --build
+```
+
+By default Compose binds BlinkSend to `127.0.0.1:3000` so a host reverse proxy can terminate HTTPS. Copy `deploy/Caddyfile.example`, replace the hostname, and set `TRUST_PROXY=1` only when that proxy is the only route to the Node process.
+
+### Direct Node deployment
+
 Run one long-lived Node process behind an HTTPS reverse proxy. The proxy must forward WebSocket upgrades at `/signal`. A static host such as GitHub Pages cannot run the signaling server by itself.
 
 1. Point a domain name to your server and install Node.js 20 or later.
@@ -107,7 +119,7 @@ Run one long-lived Node process behind an HTTPS reverse proxy. The proxy must fo
 
 If the reverse proxy is the only process allowed to connect to BlinkSend, set `TRUST_PROXY=1` and configure the proxy to **overwrite** `X-Forwarded-For`; otherwise leave it disabled. With `METRICS_TOKEN` set, `/metrics` exposes Prometheus-style counters/gauges for rooms, peers, signaling, pair-code lookups, rate limits, and ICE issuance without room IDs or client IP labels.
 
-Use one server process for now: room membership is held in that process's memory. Running multiple replicas behind a load balancer without shared room state will break pairing.
+Use one server process for now: room membership, manual pairing codes, Nearby records, and rate-limit buckets are held in that process's memory. Running multiple replicas behind a load balancer without shared room/signaling state will break pairing. The included container/Compose setup intentionally runs one application replica.
 
 ### Optional TURN relay
 
@@ -154,10 +166,11 @@ BlinkSend includes in-memory per-IP limits for room joins, WebSocket upgrades, Q
 npm ci
 npm test
 npm run bench
+npm run loadtest
 npm start
 ```
 
-`npm test` covers signaling abuse controls, SHA-256 vectors, browser-script syntax, PWA manifest invariants, UTF-8 text framing, path traversal rejection, corruption detection, a 10,000-file manifest, and a sparse chunk bitmap sized for a 5 GiB transfer without allocating 5 GiB of data. `npm run bench` prints repeatable timings for the 5 GiB-equivalent chunk map and 10,000-file manifest operations.
+`npm test` covers signaling abuse controls, SHA-256 vectors, browser-script syntax, PWA manifest invariants, UTF-8 text framing, path traversal rejection, corruption detection, a 10,000-file manifest, and a sparse chunk bitmap sized for a 5 GiB transfer without allocating 5 GiB of data. `npm run bench` prints repeatable timings for the 5 GiB-equivalent chunk map and 10,000-file manifest operations. `npm run loadtest` boots the real signaling server, creates 10 simultaneous rooms / 20 WebSockets, forwards 500 validated signaling messages, resolves manual pairing codes, checks health, and shuts the server down.
 
 `public/` contains the browser interface and transfer logic. `server.js` serves static files, QR codes, temporary ICE credentials, and WebSocket signaling. `test/` covers the server's room behavior. The project uses no frontend build step.
 

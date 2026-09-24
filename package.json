@@ -7,7 +7,8 @@
   "scripts": {
     "start": "node server.js",
     "test": "node --test",
-    "bench": "node scripts/benchmark.mjs"
+    "bench": "node scripts/benchmark.mjs",
+    "loadtest": "node scripts/load-test.mjs"
   },
   "engines": {
     "node": ">=20"

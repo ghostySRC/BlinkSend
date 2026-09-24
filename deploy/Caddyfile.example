@@ -1,0 +1,8 @@
+# Example Caddy reverse proxy for a host-installed Caddy.
+# Keep BlinkSend bound to 127.0.0.1:3000 and set TRUST_PROXY=1 only when
+# Caddy is the only network path to the Node process.
+
+blinksend.example.com {
+    encode zstd gzip
+    reverse_proxy 127.0.0.1:3000
+}
