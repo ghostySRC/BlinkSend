@@ -30,16 +30,16 @@ function toWebp(input,output,width){
 }
 function gifPair(a,b,output){
   const filter=[
-    '[0:v]minterpolate=fps=60:mi_mode=mci:mc_mode=aobmc:me_mode=bidir:vsbmc=1,scale=480:540:force_original_aspect_ratio=decrease,pad=480:540:(ow-iw)/2:(oh-ih)/2:#f6f7f8[a]',
-    '[1:v]minterpolate=fps=60:mi_mode=mci:mc_mode=aobmc:me_mode=bidir:vsbmc=1,scale=480:540:force_original_aspect_ratio=decrease,pad=480:540:(ow-iw)/2:(oh-ih)/2:#f6f7f8[b]',
-    '[a][b]hstack=inputs=2,fps=30,split[s0][s1]',
+    '[0:v]minterpolate=fps=50:mi_mode=blend,scale=480:540:force_original_aspect_ratio=decrease,pad=480:540:(ow-iw)/2:(oh-ih)/2:#f6f7f8[a]',
+    '[1:v]minterpolate=fps=50:mi_mode=blend,scale=480:540:force_original_aspect_ratio=decrease,pad=480:540:(ow-iw)/2:(oh-ih)/2:#f6f7f8[b]',
+    '[a][b]hstack=inputs=2,fps=50,split[s0][s1]',
     '[s0]palettegen=max_colors=224:stats_mode=diff[p]',
     '[s1][p]paletteuse=dither=bayer:bayer_scale=2[out]'
   ].join(';');
   ff(['-i',a,'-i',b,'-filter_complex',filter,'-map','[out]','-shortest','-loop','0',output]);
 }
 function gifSingle(input,output){
-  const filter='[0:v]minterpolate=fps=60:mi_mode=mci:mc_mode=aobmc:me_mode=bidir:vsbmc=1,scale=960:-2:flags=lanczos,fps=30,split[s0][s1];[s0]palettegen=max_colors=224:stats_mode=diff[p];[s1][p]paletteuse=dither=bayer:bayer_scale=2[out]';
+  const filter='[0:v]minterpolate=fps=50:mi_mode=blend,scale=960:-2:flags=lanczos,fps=50,split[s0][s1];[s0]palettegen=max_colors=224:stats_mode=diff[p];[s1][p]paletteuse=dither=bayer:bayer_scale=2[out]';
   ff(['-i',input,'-filter_complex',filter,'-map','[out]','-loop','0',output]);
 }
 
