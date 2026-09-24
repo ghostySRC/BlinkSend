@@ -717,6 +717,7 @@
   function enqueueEntries(entries,folderName=''){
     if(!entries?.length||channel?.readyState!=='open'||pending||outgoingBatch)return;if(entries.length+outgoing.length>BlinkSecurity.LIMITS.queueFiles){notice('transferFailed');return;}
     const normalized=entries.map(entry=>entry.file?entry:({file:entry,relativePath:entry.webkitRelativePath||''})),isFolder=!!folderName||normalized.some(x=>x.relativePath);
+    const totalLocal=normalized.reduce((sum,x)=>sum+(x.file?.size||0),0);if(normalized.some(x=>!x.file||x.file.size>BlinkSecurity.LIMITS.fileBytes||BlinkSecurity.safeRelativePath(x.relativePath)===null)||totalLocal>BlinkSecurity.LIMITS.batchBytes){notice('transferFailed');return;}
     if(isFolder&&active){notice('finishFirst');return;}
     if(isFolder){outgoing=[...normalized];batchTotal=outgoing.length;batchDone=0;const id=crypto.randomUUID(),name=folderName||outgoing[0].relativePath.split('/')[0]||'Folder',totalSize=outgoing.reduce((sum,x)=>sum+x.file.size,0);outgoingBatch={id,name,entries:[...outgoing],totalSize,count:outgoing.length,completedBytes:0,completedCount:0};renderQueue();channel.send(JSON.stringify({type:'batch-request',id,name,count:outgoing.length,totalSize}));return;}
     outgoing.push(...normalized);batchTotal=batchDone+(active?1:0)+outgoing.length;renderQueue();if(!active)sendNext();
@@ -766,14 +767,14 @@
     }
     if (msg.type === 'batch-accept' && outgoingBatch?.id === msg.id) { sendNext(); return; }
     if (msg.type === 'batch-decline' && outgoingBatch?.id === msg.id) { outgoing=[]; outgoingBatch=null; batchTotal=0; batchDone=0; notice('declined'); return; }
-    if (msg.type === 'batch-complete' && incomingBatch?.id === msg.id) { incomingBatch=null; await clearBatchContext(); return; }
+    if (msg.type === 'batch-complete' && incomingBatch?.id === msg.id) { if(!BlinkSecurity.batchCompleteIsConsistent(incomingBatch)){notice('incomplete');return;} incomingBatch=null; await clearBatchContext(); return; }
     if (msg.type === 'request') {
       if (active || pending || !BlinkSecurity.validFileRequest(msg)) { channel.send(JSON.stringify({ type: 'decline', id: typeof msg.id==='string'?msg.id:'' })); return; }
       const safeName=BlinkSecurity.safeName(msg.name,'download');
       const safePath=BlinkSecurity.safeRelativePath(msg.relativePath);
       const requestedChunk=Number.isSafeInteger(msg.chunkSize)?msg.chunkSize:defaultChunkSize;
       pending = { id: msg.id, name: safeName, relativePath: safePath, size: msg.size, chunkSize:requestedChunk, batchId:typeof msg.batchId === 'string' ? msg.batchId : null };
-      if (pending.batchId && incomingBatch?.id === pending.batchId && incomingBatch.accepted) { await acceptPendingFile(true); return; }
+      if(pending.batchId){if(incomingBatch?.id!==pending.batchId||!BlinkSecurity.batchAllowsFile(incomingBatch,pending)){channel.send(JSON.stringify({type:'decline',id:pending.id}));pending=null;return;}await acceptPendingFile(true);return;}
       els['incoming-title'].textContent = tr('incomingFile');
       els['incoming-detail'].textContent = `${pending.relativePath || pending.name} · ${format(msg.size)}`;
       updateSaveNote();

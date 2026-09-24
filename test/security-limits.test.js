@@ -23,3 +23,15 @@ test('persisted resume metadata is validated before restore',async()=>{
   assert.equal(s.validPersistedSession(send),true);
   assert.equal(s.validPersistedSession({...send,batchEntries:Array(s.LIMITS.batchFiles+1).fill({name:'x',size:1,relativePath:''})}),false);
 });
+
+test('accepted batch manifest cannot be exceeded or completed early',async()=>{
+  const s=await load(),batch={accepted:true,count:2,totalSize:100,completedCount:0,completedBytes:0};
+  assert.equal(s.batchAllowsFile(batch,{size:60}),true);
+  batch.completedCount=1;batch.completedBytes=60;
+  assert.equal(s.batchAllowsFile(batch,{size:40}),true);
+  assert.equal(s.batchAllowsFile(batch,{size:41}),false);
+  assert.equal(s.batchCompleteIsConsistent(batch),false);
+  batch.completedCount=2;batch.completedBytes=100;
+  assert.equal(s.batchAllowsFile(batch,{size:0}),false);
+  assert.equal(s.batchCompleteIsConsistent(batch),true);
+});

@@ -36,6 +36,13 @@
     for(const r of ranges){if(!Array.isArray(r)||r.length!==2||!Number.isSafeInteger(r[0])||!Number.isSafeInteger(r[1])||r[0]<0||r[1]<r[0]||r[1]>=total||r[0]<=last)return false;last=r[1];}
     return true;
   }
+  function batchAllowsFile(batch,file){
+    if(!batch||!file||batch.accepted!==true)return false;
+    if(!Number.isSafeInteger(batch.count)||!Number.isSafeInteger(batch.totalSize))return false;
+    const completedCount=Number(batch.completedCount)||0,completedBytes=Number(batch.completedBytes)||0;
+    return completedCount<batch.count&&completedBytes+file.size<=batch.totalSize;
+  }
+  function batchCompleteIsConsistent(batch){return !!batch&&Number(batch.completedCount)===Number(batch.count)&&Number(batch.completedBytes)===Number(batch.totalSize);}
   function validTextStart(msg){return !!msg&&validId(msg.id)&&Number.isSafeInteger(msg.parts)&&msg.parts>=1&&msg.parts<=LIMITS.textParts&&Number.isSafeInteger(msg.bytes)&&msg.bytes>=0&&msg.bytes<=LIMITS.textBytes;}
   function validTextPart(msg,state){return !!state&&!!msg&&msg.id===state.id&&Number.isSafeInteger(msg.index)&&msg.index>=0&&msg.index<state.parts.length&&typeof msg.text==='string'&&utf8(msg.text)<=LIMITS.textPartBytes;}
   function controlJsonWithinLimit(raw){return typeof raw==='string'&&utf8(raw)<=LIMITS.controlJsonBytes;}
@@ -58,5 +65,5 @@
     }
     return true;
   }
-  window.BlinkSecurity={LIMITS,utf8,validId,safeName,safeRelativePath,chunkCount,validFileRequest,validBatchRequest,validRanges,validTextStart,validTextPart,controlJsonWithinLimit,validPersistedEntry,validPersistedSession};
+  window.BlinkSecurity={LIMITS,utf8,validId,safeName,safeRelativePath,chunkCount,validFileRequest,validBatchRequest,batchAllowsFile,batchCompleteIsConsistent,validRanges,validTextStart,validTextPart,controlJsonWithinLimit,validPersistedEntry,validPersistedSession};
 })();
