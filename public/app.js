@@ -609,6 +609,7 @@
       if (pc !== current || channel?.readyState !== 'open') return;
       const summary=BlinkConnection.summarize(stats);
       connectionMetrics.relayed=summary.relayed;connectionMetrics.rttMs=summary.rttMs;connectionMetrics.localType=summary.localType;connectionMetrics.remoteType=summary.remoteType;
+      retuneConnection();
       readyLabel=!summary.pair?'ready':summary.relayed?'readyRelay':'readyDirect';updateQualityLabel();updateDiagnostics();
       await showVerificationCode();
     } catch { if (pc === current && channel?.readyState === 'open') await showVerificationCode(); }
@@ -697,6 +698,7 @@
   }
   function stopTransfer(message, notify = true, preserveQueue = false, vars = {}) {
     active?.flowWake?.();
+    active?.hashTask?.terminate?.();
     active?.opfsWorker?.terminate?.();
     if (notify && active && channel?.readyState === 'open') channel.send(JSON.stringify({ type: 'cancel', id: active.id }));
     if (active?.writer) active.writer.abort().catch(() => {});
@@ -739,17 +741,16 @@
     els['connection-quality'].textContent=path+' · '+tr(key)+measured;
   }
   async function runBenchmark(){
-    if(channel?.readyState!=='open'||active||benchmarkState)return;
-    const id=crypto.randomUUID(),bytes=2*1024*1024;
+    if(channel?.readyState!=='open'||active||benchmarkState||mode!=='send')return;
+    const id=crypto.randomUUID(),bytes=8*1024*1024;
     benchmarkState={id,bytes,started:0,resolve:null};
     const done=new Promise(resolve=>benchmarkState.resolve=resolve);
     channel.send(JSON.stringify({type:'benchmark-start',id,bytes}));
-    const timeout=setTimeout(()=>benchmarkState?.resolve?.(0),9000);
+    const timeout=setTimeout(()=>benchmarkState?.resolve?.(0),12000);
     const throughput=await done;clearTimeout(timeout);
     if(throughput>0)connectionMetrics.throughputBps=throughput;
-    tuning=BlinkProtocol.chooseTuning({throughputBps:connectionMetrics.throughputBps,rttMs:connectionMetrics.rttMs,deviceMemory:navigator.deviceMemory||0,cores:navigator.hardwareConcurrency||4,maxMessageSize:pc?.sctp?.maxMessageSize||0});
-    if(channel?.readyState==='open')channel.bufferedAmountLowThreshold=tuning.lowWater;
-    benchmarkState=null;updateQualityLabel();
+    retuneConnection();
+    benchmarkState=null;updateQualityLabel();updateDiagnostics();
   }
   async function sendBenchmarkPayload(){
     if(!benchmarkState||channel?.readyState!=='open')return;
@@ -765,8 +766,12 @@
     if(!localVerified||!remoteVerified||peerVerified)return;
     peerVerified=true;els['verify-peer'].hidden=true;
     if(active){status('verified',true);if(active.direction==='receive'&&active.paused&&channel?.readyState==='open')sendResumeMap();if(active.direction==='send'&&active.pendingRanges){const ranges=active.pendingRanges;delete active.pendingRanges;resumeOutgoingRanges(ranges);}else if(active.direction==='send'&&Number.isSafeInteger(active.pendingResume)){const next=active.pendingResume;delete active.pendingResume;resumeOutgoing(next);}return;}
-    calibrating=true;status('verified',true);
-    runBenchmark().catch(()=>{}).finally(()=>{calibrating=false;status('verified',true);flushSharedTarget();});
+    if(mode==='send'){
+      calibrating=true;status('verified',true);
+      runBenchmark().catch(()=>{}).finally(()=>{calibrating=false;status('verified',true);flushSharedTarget();});
+    }else{
+      calibrating=false;status('verified',true);flushSharedTarget();
+    }
   }
   function sendResumeMap(){
     if(!active||active.direction!=='receive'||channel?.readyState!=='open')return;
@@ -798,8 +803,8 @@
     if (!entry || channel?.readyState !== 'open' || active || pending) return;
     const file = entry.file || entry;
     const relativePath = entry.relativePath || file.webkitRelativePath || '';
-    const tuned=BlinkProtocol.chooseTuning({throughputBps:connectionMetrics.throughputBps,rttMs:connectionMetrics.rttMs,deviceMemory:navigator.deviceMemory||0,cores:navigator.hardwareConcurrency||4,maxMessageSize:pc?.sctp?.maxMessageSize||0});tuning=tuned;if(channel?.readyState==='open')channel.bufferedAmountLowThreshold=tuning.lowWater;
-    const id = entry.transferId || crypto.randomUUID(); active = { id, direction: 'send', file, sourceEntry:entry, relativePath, batchId:outgoingBatch?.id || entry.batchId || null, chunkSize:tuning.chunkSize, highWater:tuning.highWater, sent: 0, nextChunk: 0, remoteReceived:0, remoteWindow:0, flowWake:null, hasher: new BlinkSHA256(), started: Date.now(), accepted: false, paused: false };
+    retuneConnection();
+    const id = entry.transferId || crypto.randomUUID(); active = { id, direction: 'send', file, sourceEntry:entry, relativePath, batchId:outgoingBatch?.id || entry.batchId || null, chunkSize:tuning.chunkSize, highWater:tuning.highWater, sent: 0, nextChunk: 0, remoteReceived:0, remoteWindow:0, flowWake:null, hasher:null, fullHash:'', hashTask:null, hashPromise:null, started: Date.now(), accepted: false, paused: false };
     showTransfer(relativePath || file.name, file.size);
     await persistSendSession(entry);
     channel.send(JSON.stringify({ type: 'request', id, name: file.name, relativePath, size: file.size, batchId:active.batchId, chunkSize:active.chunkSize }));
@@ -955,6 +960,7 @@
       active.accepted=true;active.paused=false;
       active.remoteReceived=0;
       active.remoteWindow=BlinkSecurity.validFlowWindow(msg.windowBytes)?msg.windowBytes:8*1024*1024;
+      ensureSenderHash(active).catch(()=>{});
       pump(msg.id);
     }
     if(msg.type==='flow'&&active?.id===msg.id&&active.direction==='send'&&BlinkSecurity.validFlowUpdate(msg,active.file.size)){
@@ -974,7 +980,7 @@
     }
     if(msg.type==='retry'&&active?.id===msg.id&&active.direction==='send'){
       active.retries=(active.retries||0)+1;setTransferBanner(tr('retryBanner',{attempt:active.retries}),'warning');if(active.retries>2){finishOutgoing('transferFailed');return;}
-      active.sent=0;active.nextChunk=0;active.remoteReceived=0;active.remoteWindow=active.remoteWindow||8*1024*1024;active.sendRanges=null;active.fullHash='';active.hasher=new BlinkSHA256();active.paused=false;active.stage='sending';pump(active.id);
+      active.sent=0;active.nextChunk=0;active.remoteReceived=0;active.remoteWindow=active.remoteWindow||8*1024*1024;active.sendRanges=null;active.paused=false;active.stage='sending';ensureSenderHash(active).catch(()=>{});pump(active.id);
     }
     if (msg.type === 'verify-confirm') { remoteVerified = true; maybeFinishVerification(); }
     if (msg.type === 'decline' && active?.id === msg.id && active.direction === 'send') finishOutgoing('declined');
@@ -1220,7 +1226,8 @@
         outgoing = s.batchEntries.slice(Math.max(0,idx+1)).map(x=>({ ...x, file:null }));
         for (const entry of outgoing) entry.file = await entry.handle.getFile();
       }
-      active={ id:s.transferId, direction:'send', file, sourceEntry:{handle:s.handle,file,relativePath:s.relativePath}, relativePath:s.relativePath||'', batchId:s.batchId||null, chunkSize:s.chunkSize||defaultChunkSize,highWater:tuning.highWater,sent:0,nextChunk:0,remoteReceived:0,remoteWindow:8*1024*1024,flowWake:null,hasher:new BlinkSHA256(),started:Date.now(),accepted:true,paused:true };
+      retuneConnection();
+      active={ id:s.transferId, direction:'send', file, sourceEntry:{handle:s.handle,file,relativePath:s.relativePath}, relativePath:s.relativePath||'', batchId:s.batchId||null, chunkSize:s.chunkSize||defaultChunkSize,highWater:tuning.highWater,sent:0,nextChunk:0,remoteReceived:0,remoteWindow:8*1024*1024,flowWake:null,hasher:null,fullHash:'',hashTask:null,hashPromise:null,started:Date.now(),accepted:true,paused:true };
       showTransfer(s.relativePath || s.name, s.size); active.stage='resuming'; renderTransfer();
     } else {
       const existing=await s.handle.getFile(),restoredChunk=s.chunkSize||defaultChunkSize,totalChunks=Math.ceil(s.size/restoredChunk);
