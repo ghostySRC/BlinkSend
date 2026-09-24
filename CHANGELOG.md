@@ -10,7 +10,7 @@
 - Move durable resume checkpoints to 128 MiB intervals to reduce close/reopen overhead on very large transfers while preserving reload recovery.
 - Carry receiver credit across resume/reconnect and reset it safely during verification retries.
 - Add validation for flow-control messages so a peer cannot advertise impossible progress or abusive receive windows.
-- Expand cross-browser E2E binary coverage from 8 MiB to 32 MiB in Chromium, Firefox, and WebKit.
+- Expand sustained binary E2E coverage to 64 MiB in Firefox/WebKit and 224 MiB in Chromium; the Chromium case crosses the 200 MiB memory cutoff and therefore exercises the OPFS streaming path used by larger files.
 
 ## 0.4.0-beta.3 — high-throughput transfer engine
 
