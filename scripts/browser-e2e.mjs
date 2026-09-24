@@ -53,7 +53,7 @@ try{
   await sender.locator('#file').setInputFiles({name:'throughput.bin',mimeType:'application/octet-stream',buffer:payload});
   await waitFor(()=>receiver.locator('#incoming').isVisible(),'binary transfer prompt',10000);
   await receiver.locator('#accept').click();
-  await waitFor(()=>receiver.locator('#post-transfer').isVisible(),'binary transfer completion',30000);
+  await waitFor(()=>sender.locator('#post-transfer').isVisible(),'binary transfer completion',30000);
   const perfSeconds=(Date.now()-perfStart)/1000;
   if(perfSeconds>30)throw new Error('8 MiB binary transfer exceeded smoke-test budget');
 
