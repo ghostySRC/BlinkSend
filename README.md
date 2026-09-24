@@ -48,6 +48,7 @@ Use the language selector and theme button in the header. BlinkSend remembers bo
 - Optional local device names are exchanged only with the connected peer. Optional completion sound/vibration stays off unless enabled.
 - Local-only transfer history keeps the latest verified file transfers and text sends in IndexedDB; it can be cleared from Settings.
 - Received files can be handed to the operating system's native share sheet when the browser supports Web Share files.
+- On platforms that support the Web Share Target API, BlinkSend can appear in the system Share menu. Shared files/text are intercepted locally by the service worker, staged in device-local IndexedDB, and then sent through the normal peer-to-peer flow after pairing.
 - Large files stream to disk on browsers with the File System Access API. A bounded memory download is used elsewhere.
 - Two participants per room, random 128-bit room links, no accounts, and no server-side file storage.
 
@@ -134,7 +135,7 @@ Set both TURN variables on the BlinkSend server. Configure the same shared secre
 - WebRTC encrypts the data channel in transit. The BlinkSend server forwards connection details, but its normal transfer path does not receive file contents.
 - The receiving browser sees a filename and size before accepting. The signaling server does not need the file bytes or filename to pair devices.
 - A TURN server, if enabled, carries encrypted traffic and can observe connection metadata and traffic volume.
-- Files are not uploaded for later retrieval. Both participants must be online at the same time. Transfer history, local device name, preferences, and persistent resume metadata remain in the user's browser storage and are not synced to the BlinkSend server.
+- Files are not uploaded for later retrieval. Both participants must be online at the same time. Transfer history, local device name, preferences, persistent resume metadata, and any pending PWA share-target payload remain in browser-local storage and are not synced to the BlinkSend server.
 
 BlinkSend includes in-memory per-IP limits for room joins, WebSocket upgrades, QR generation, and ICE credential requests; malformed signaling is rejected and abusive sockets are closed. TURN credentials require a short-lived token issued through a successful room join. These controls are intentionally lightweight and single-process: a serious public deployment should also add reverse-proxy/CDN rate limiting, centralized abuse monitoring, TURN bandwidth quotas, and shared state before horizontal scaling.
 

@@ -14,7 +14,7 @@ const maxAge = 30 * 60 * 1000;
 const rooms = new Map();
 const iceTokens = new Map();
 const limits = new Map();
-const types = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.svg': 'image/svg+xml' };
+const types = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.svg': 'image/svg+xml', '.webmanifest': 'application/manifest+json; charset=utf-8', '.json': 'application/json; charset=utf-8' };
 
 function clientIp(req) { return req.socket?.remoteAddress || 'unknown'; }
 function allowed(key, max, windowMs) {

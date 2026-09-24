@@ -1,6 +1,6 @@
 (() => {
   const $ = id => document.getElementById(id);
-  const els = Object.fromEntries(['settings-toggle','settings-panel','settings-close','device-name','notify-complete','history-list','clear-history','mode-picker','mode-send','mode-receive','receive-join','join-link','join-room','join-back','resume-card','resume-detail','resume-transfer','discard-resume','transfer-workspace','invite-card','transfer-card','send-controls','receive-wait','qr','copy','new-room','status','status-dot','peer-name','connection-quality','verify-peer','verify-code','verify-match','file','folder','choose-folder','share-text','send-text','received-text','received-content','received-link','copy-received','share-received','share-last-file','drop','transfer-info','batch-summary','file-name','file-size','progress','progress-text','cancel','queue-status','notice','incoming','incoming-title','incoming-detail','save-note','accept','decline'].map(id => [id, $(id)]));
+  const els = Object.fromEntries(['install-app','settings-toggle','settings-panel','settings-close','device-name','notify-complete','history-list','clear-history','mode-picker','mode-send','mode-receive','receive-join','join-link','join-room','join-back','resume-card','resume-detail','resume-transfer','discard-resume','transfer-workspace','invite-card','transfer-card','send-controls','receive-wait','qr','copy','new-room','status','status-dot','peer-name','connection-quality','verify-peer','verify-code','verify-match','file','folder','choose-folder','share-text','send-text','received-text','received-content','received-link','copy-received','share-received','share-last-file','drop','transfer-info','batch-summary','file-name','file-size','progress','progress-text','cancel','queue-status','notice','incoming','incoming-title','incoming-detail','save-note','accept','decline'].map(id => [id, $(id)]));
   const translations = {
   "en": {
     "language": "Language",
@@ -47,6 +47,8 @@
     "shareReceivedFile": "Share received file",
     "textSent": "Text sent.",
     "textTooLarge": "Text is too large. Keep it under 256 KB.",
+    "install": "Install",
+    "sharedReady": "Shared items are ready. Connect the receiving device to send them.",
     "settings": "Settings",
     "close": "Close",
     "deviceName": "Device name",
@@ -174,6 +176,8 @@
     "shareReceivedFile": "Dela mottagen fil",
     "textSent": "Texten skickades.",
     "textTooLarge": "Texten är för stor. Håll den under 256 KB.",
+    "install": "Installera",
+    "sharedReady": "Delade objekt är redo. Anslut mottagarenheten för att skicka dem.",
     "settings": "Inställningar",
     "close": "Stäng",
     "deviceName": "Enhetsnamn",
@@ -321,7 +325,7 @@
   const format = bytes => bytes < 1024 ? `${bytes} B` : bytes < 1048576 ? `${(bytes / 1024).toFixed(1)} KB` : bytes < 1073741824 ? `${(bytes / 1048576).toFixed(1)} MB` : `${(bytes / 1073741824).toFixed(2)} GB`;
   let socket, pc, channel, pending, active, incomingQueue = Promise.resolve(), signalQueue = Promise.resolve(), connectTimer, iceToken = '', isOfferer=false, iceRestartTimer;
   let readyLabel = 'ready', peerVerified = false, localVerified = false, remoteVerified = false, verificationCode = '';
-  let outgoing = [], batchTotal = 0, batchDone = 0, mode = '', outgoingBatch = null, incomingBatch = null, resumeSession = null, peerName = '', lastReceivedFile = null;
+  let outgoing = [], batchTotal = 0, batchDone = 0, mode = '', outgoingBatch = null, incomingBatch = null, resumeSession = null, peerName = '', lastReceivedFile = null, pendingSharedTarget=null, installPrompt=null;
   const roomPattern = /^[a-f0-9]{32}$/;
   let room = location.hash.slice(1).toLowerCase();
   if (!roomPattern.test(room)) room = '';
@@ -336,6 +340,17 @@
     els['transfer-workspace'].classList.toggle('receive-mode', value === 'receive');
     els['send-controls'].hidden = value !== 'send'; els['receive-wait'].hidden = value !== 'receive';
     if (room) { try { sessionStorage.setItem(`blinksend-role:${room}`, value); } catch {} }
+  }
+  function openShareDb(){return new Promise((resolve,reject)=>{const req=indexedDB.open('blinksend-share',1);req.onupgradeneeded=()=>{if(!req.result.objectStoreNames.contains('inbox'))req.result.createObjectStore('inbox',{keyPath:'id'});};req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error);});}
+  async function consumeShareTarget(){
+    if(!new URLSearchParams(location.search).has('share'))return null;
+    try{const db=await openShareDb();return await new Promise((resolve,reject)=>{const tx=db.transaction('inbox','readwrite'),store=tx.objectStore('inbox'),req=store.get('pending');req.onsuccess=()=>{const value=req.result||null;store.delete('pending');resolve(value);};req.onerror=()=>reject(req.error);});}catch{return null;}
+  }
+  async function flushSharedTarget(){
+    if(!pendingSharedTarget||!peerVerified||channel?.readyState!=='open')return;
+    const item=pendingSharedTarget;pendingSharedTarget=null;
+    if(item.files?.length){enqueueEntries(item.files.map(file=>({file,relativePath:file.webkitRelativePath||''})));return;}
+    const text=[item.title,item.text,item.url].filter(Boolean).join('\n').trim();if(text)await sendTextValue(text);
   }
   const sanitizeDeviceName = value => String(value || '').replace(/[\x00-\x1f\x7f]/g,'').trim().slice(0,64);
   let deviceName = sanitizeDeviceName(readSetting('blinksend-device-name')) || 'BlinkSend device';
@@ -596,7 +611,7 @@
   }
   function maybeFinishVerification() {
     if (!localVerified || !remoteVerified || peerVerified) return;
-    peerVerified = true; els['verify-peer'].hidden = true; status('verified', true); runBenchmark();
+    peerVerified = true; els['verify-peer'].hidden = true; status('verified', true); runBenchmark(); flushSharedTarget();
     if (active?.direction === 'receive' && active.paused && channel?.readyState === 'open') sendResumeMap();
     if (active?.direction === 'send' && active.pendingRanges) { const ranges=active.pendingRanges;delete active.pendingRanges;resumeOutgoingRanges(ranges); }
     else if (active?.direction === 'send' && Number.isSafeInteger(active.pendingResume)) { const next = active.pendingResume; delete active.pendingResume; resumeOutgoing(next); }
@@ -970,7 +985,13 @@
   els['notify-complete'].checked=completionFeedback;
   els['notify-complete'].onchange=()=>{completionFeedback=els['notify-complete'].checked;saveSetting('blinksend-completion-feedback',completionFeedback?'1':'0');};
   els['clear-history'].onclick=async()=>{try{await BlinkStore?.clearHistory?.();}catch{}await renderHistory();};
+  if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});
+  window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();installPrompt=e;els['install-app'].hidden=false;});
+  window.addEventListener('appinstalled',()=>{installPrompt=null;els['install-app'].hidden=true;});
+  els['install-app'].onclick=async()=>{if(!installPrompt)return;try{await installPrompt.prompt();await installPrompt.userChoice;}catch{}installPrompt=null;els['install-app'].hidden=true;};
   async function initMode() {
+    pendingSharedTarget=await consumeShareTarget();
+    if(pendingSharedTarget&&!room){room=newRoomId();history.replaceState(null,'',location.pathname+'#'+room);setRole('send');updateRoomUi();connect();notice('sharedReady');return;}
     if (room) {
       let role='receive'; try { role=sessionStorage.getItem(`blinksend-role:${room}`) || 'receive'; } catch {}
       setRole(role); updateRoomUi(); connect(); await checkResume();
