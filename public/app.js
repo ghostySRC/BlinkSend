@@ -778,7 +778,9 @@
     const state=benchmarkState;
     if(!state||channel?.readyState!=='open')return;
     state.started=performance.now();
-    const block=new Uint8Array(64*1024),count=Math.ceil(state.bytes/block.byteLength),limit=4*1024*1024;
+    const negotiated=Number(pc?.sctp?.maxMessageSize)||64*1024;
+    const blockBytes=Math.max(16*1024,Math.min(128*1024,negotiated));
+    const block=new Uint8Array(blockBytes),count=Math.ceil(state.bytes/block.byteLength),limit=4*1024*1024;
     for(let i=0;i<count;i++){
       if(benchmarkState!==state||state.cancelled||channel?.readyState!=='open')return;
       while(channel.bufferedAmount>limit){
