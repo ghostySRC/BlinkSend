@@ -17,7 +17,7 @@ test('connection summary never exposes candidate addresses',async()=>{
   const x=c.summarize(stats);assert.equal(x.relayed,true);assert.equal(x.rttMs,42);assert.equal(x.localType,'host');assert.equal(x.remoteType,'relay');assert.equal('address' in x,false);
 });
 test('transfer chunk packing is reversible and duplicate bitmap checks are pure',async()=>{
-  const ctx={window:{},BlinkProtocol:{markChunk:(m,i)=>{m[i>>3]|=1<<(i&7);return m;}},BlinkSHA256:class{}};await run('transfer-core.js',ctx);const t=ctx.window.BlinkTransfer;
+  const ctx={window:{BlinkProtocol:{markChunk:(m,i)=>{m[i>>3]|=1<<(i&7);return m;}},BlinkSHA256:class{},BlinkSecurity:{chunkCount:()=>1,LIMITS:{maxChunks:10}}}};await run('transfer-core.js',ctx);const t=ctx.window.BlinkTransfer;
   const packed=t.packChunk(77,Uint8Array.from([4,5,6]).buffer),u=t.unpackChunk(packed);assert.equal(u.seq,77);assert.deepEqual([...u.payload],[4,5,6]);
   const map=t.makePrefixBitmap(10,3);assert.equal(t.bitmapHas(map,0),true);assert.equal(t.bitmapHas(map,2),true);assert.equal(t.bitmapHas(map,3),false);
 });
