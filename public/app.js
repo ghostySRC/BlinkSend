@@ -917,8 +917,7 @@
       batchMs=Math.max(.01,performance.now()-started);
     }
     if(batchMs>0){
-      const maxWindow=navigator.deviceMemory?64*1024*1024:32*1024*1024;
-      const adapted=BlinkProtocol.adaptReceiveWindow({current:state.flowWindow,previousBps:state.receiveWriteBps,batchBytes:total,batchMs,max:maxWindow});
+      const adapted=BlinkProtocol.adaptReceiveWindow({current:state.flowWindow,previousBps:state.receiveWriteBps,batchBytes:total,batchMs,max:32*1024*1024});
       state.flowWindow=adapted.window;state.receiveWriteBps=adapted.throughputBps;
     }
     if(state===active){progress(state.received,state.size,state.started,'receiving');sendFlowUpdate(state);}
