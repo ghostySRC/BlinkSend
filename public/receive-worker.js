@@ -103,9 +103,15 @@ async function durableCheckpoint(){
   }
 }
 
-async function closeBackend(){
-  if(access){try{access.flush();}catch{}try{access.close();}catch{}access=null;}
-  if(writable){try{await writable.close();}catch{}writable=null;}
+async function closeBackend(strict=false){
+  if(access){
+    try{access.flush();access.close();}catch(error){access=null;if(strict)throw error;}
+    access=null;
+  }
+  if(writable){
+    const current=writable;writable=null;
+    try{await current.close();}catch(error){if(strict)throw error;}
+  }
 }
 
 async function hashWhole(size){
@@ -160,7 +166,7 @@ onmessage=async event=>{
       const size=Number(msg.size)||0;
       if(access)access.flush();
       const hash=!hashDirty&&nextHashOffset===size?hasher.hex():await hashWhole(size);
-      await closeBackend();initialized=false;
+      await closeBackend(true);initialized=false;
       postMessage({type:'finalized',id:msg.id,hash,backend});
       return;
     }
