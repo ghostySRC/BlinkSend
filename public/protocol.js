@@ -14,7 +14,7 @@
     if(rttMs>180)highWater=Math.min(highWater,8*MiB);
     const readAhead=weak?2*MiB:lan?32*MiB:throughputBps>20*MiB?16*MiB:8*MiB;
     const writeBatch=weak?MiB:throughputBps>10*MiB?8*MiB:4*MiB;
-    let receiveWindow=weak?8*MiB:unknownMemory?(lan?24*MiB:16*MiB):lan?48*MiB:throughputBps>25*MiB?48*MiB:throughputBps>8*MiB?32*MiB:24*MiB;
+    let receiveWindow=weak?8*MiB:unknownMemory?(lan?24*MiB:16*MiB):lan?32*MiB:throughputBps>25*MiB?32*MiB:throughputBps>8*MiB?32*MiB:24*MiB;
     if(rttMs>180)receiveWindow=Math.min(receiveWindow,16*MiB);
     return {
       chunkSize,highWater,lowWater:Math.max(MiB,Math.floor(highWater/4)),
