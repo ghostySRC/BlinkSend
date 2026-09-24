@@ -1,22 +1,41 @@
-<p align="center"><img src="public/favicon.svg" width="68" alt="BlinkSend logo"></p>
+<p align="center"><img src="public/favicon.svg" width="76" alt="BlinkSend logo"></p>
 <h1 align="center">BlinkSend</h1>
-<p align="center">A self-hosted file transfer tool for two browsers.</p>
-<p align="center"><strong>Current package version:</strong> 0.4.0-beta.1 · <strong>Release status:</strong> Beta</p>
-<p align="center"><a href="#features">Features</a> · <a href="#quick-start">Quick start</a> · <a href="#how-it-works">How it works</a> · <a href="#deploy-your-own-instance">Self-host</a></p>
+<p align="center"><strong>Fast, private file sharing directly between browsers.</strong></p>
+<p align="center">No account. No cloud file storage. Pair two devices, verify the peer, and send.</p>
 
+<p align="center">
+  <a href="https://github.com/ghostySRC/BlinkSend/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/ghostySRC/BlinkSend/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/ghostySRC/BlinkSend/actions/workflows/browser-e2e.yml"><img alt="Browser E2E" src="https://github.com/ghostySRC/BlinkSend/actions/workflows/browser-e2e.yml/badge.svg"></a>
+  <img alt="Node 20+" src="https://img.shields.io/badge/Node.js-20%2B-43853d">
+  <img alt="WebRTC" src="https://img.shields.io/badge/WebRTC-peer--to--peer-333333">
+  <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
+</p>
 
-> **Status:** BlinkSend is an actively developed self-hosted project. The automated suite covers the transfer protocol, signaling abuse controls, integrity checks, PWA metadata, and large-transfer simulations; real-device/browser behavior can still differ by platform APIs.
+<p align="center"><strong>0.4.0-beta.1</strong> · WebRTC · resumable transfers · SHA-256 verification · self-hostable</p>
+<p align="center"><a href="#see-it-in-action">Demo</a> · <a href="#why-blinksend">Why BlinkSend</a> · <a href="#quick-start">Quick start</a> · <a href="#deploy-your-own-instance">Self-host</a> · <a href="COMPATIBILITY.md">Compatibility</a></p>
+
+> **Beta:** BlinkSend is under active reliability and cross-browser testing. Chromium, Firefox, and WebKit pairing/verification/WebRTC clipboard flows run in CI; platform-specific file APIs still require real-device testing.
+
+## Why BlinkSend
+
+BlinkSend is an open-source, self-hosted **peer-to-peer file transfer** app for moving files, folders, links, and clipboard text between computers and phones. It uses **WebRTC data channels** for the transfer path, keeps normal file contents off the BlinkSend signaling server, requires an explicit peer-verification step, and verifies completed files with **SHA-256**.
+
+- **Open the page and send:** no signup, account, or recipient app is required.
+- **Direct when possible:** WebRTC connects the two browsers directly; TURN can relay encrypted traffic when direct connectivity fails.
+- **Built for interrupted transfers:** numbered chunks, missing-range resume, and reload recovery on browsers with persistent file handles.
+- **Self-hostable:** Node.js, Docker/Compose, health checks, reverse-proxy guidance, optional TURN, and Prometheus-style metrics.
+- **Cross-browser tested:** automated Chromium, Firefox, and WebKit pairing + verification + WebRTC messaging checks.
 
 ## See it in action
 
 <p align="center">
-  <img src="docs/media/desktop.webp" width="920" alt="BlinkSend v0.3.0 Send and Receive start screen">
+  <img src="docs/media/desktop.webp" width="920" alt="BlinkSend v0.4.0 Send and Receive start screen">
 </p>
 
 <p align="center">
-  <img src="docs/media/mobile.webp" width="270" alt="BlinkSend v0.3.0 mobile light theme">
+  <img src="docs/media/mobile.webp" width="270" alt="BlinkSend v0.4.0 mobile light theme">
   &nbsp;&nbsp;
-  <img src="docs/media/mobile-dark.webp" width="270" alt="BlinkSend v0.3.0 mobile dark theme">
+  <img src="docs/media/mobile-dark.webp" width="270" alt="BlinkSend v0.4.0 mobile dark theme">
 </p>
 
 ### Pair in seconds
@@ -126,11 +145,11 @@ For normal files, the recipient accepts the transfer before data starts. Folder 
 
 | Receiving browser capability | Save behavior | File limit in BlinkSend |
 | --- | --- | --- |
-| Supports `showSaveFilePicker` | Writes chunks to the chosen file as they arrive | No app-imposed size limit; disk space and browser limits still apply |
-| No save picker, but supports Origin Private File System (OPFS) | Streams large files into temporary browser-managed disk storage, then starts the download | No app-imposed size limit; available storage/quota and browser limits still apply |
+| Supports `showSaveFilePicker` | Writes chunks to the chosen file as they arrive | Up to the current 256 GiB safety cap; disk space and browser limits still apply |
+| No save picker, but supports Origin Private File System (OPFS) | Streams large files into temporary browser-managed disk storage, then starts the download | Up to the current 256 GiB safety cap; available storage/quota and browser limits still apply |
 | No save picker and no OPFS | Buffers the file in memory, then starts a download | 200 MB per file |
 
-The 200 MB memory fallback now applies only when the browser exposes neither a save-file picker nor OPFS. Transfer speed depends on the sender's upload connection, the receiver's download connection, Wi-Fi quality, browser performance, and whether a relay is required. BlinkSend performs a short post-verification calibration before enabling new sends, preventing calibration frames from overlapping real file data, and tunes its WebRTC send-buffer target while keeping file messages at or below 64 KiB for compatibility. It does not promise a fixed speed.
+The 200 MB memory fallback applies only when the browser exposes neither a save-file picker nor OPFS. Independent anti-resource-exhaustion limits currently cap a single announced file at 256 GiB and an accepted batch at 10,000 files / 512 GiB. Transfer speed depends on the sender's upload connection, the receiver's download connection, Wi-Fi quality, browser performance, and whether a relay is required. BlinkSend performs a short post-verification calibration before enabling new sends, preventing calibration frames from overlapping real file data, and tunes its WebRTC send-buffer target while keeping file messages at or below 64 KiB for compatibility. It does not promise a fixed speed.
 
 ## Deploy your own instance
 
@@ -238,7 +257,9 @@ npm start
 
 `public/` contains the browser interface and transfer logic. `server.js` serves static files, QR codes, manual pairing resolution, optional Nearby/metrics endpoints, temporary ICE credentials, WebSocket signaling, and graceful shutdown handling. `test/` covers the server's room behavior. The project uses no frontend build step.
 
-Contributions are welcome. For a bug report, include browser and operating system versions, whether the devices were on the same network, the connection status shown in BlinkSend, and steps to reproduce the problem. Do not post private invite links or TURN credentials.
+Contributions and real-device test reports are welcome. Start with [`CONTRIBUTING.md`](CONTRIBUTING.md) or use the repository issue forms for bugs and browser/network compatibility reports. Do not post private invite links, TURN credentials, or other secrets.
+
+If BlinkSend is useful to you, starring the repository helps other people discover it.
 
 ## License
 

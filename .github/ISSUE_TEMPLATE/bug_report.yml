@@ -1,0 +1,70 @@
+name: Bug report
+description: Report a reproducible BlinkSend problem
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. Remove private invite links, TURN credentials, tokens, and sensitive filenames from logs/screenshots.
+  - type: input
+    id: browser
+    attributes:
+      label: Browser and version
+      placeholder: "Chrome 152, Firefox 146, Safari 26..."
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system / device
+      placeholder: "Windows 11, macOS, iPhone, Android..."
+    validations:
+      required: true
+  - type: dropdown
+    id: path
+    attributes:
+      label: Connection path
+      options:
+        - Direct
+        - Relay
+        - Did not connect
+        - Not sure
+    validations:
+      required: true
+  - type: dropdown
+    id: network
+    attributes:
+      label: Network setup
+      options:
+        - Same LAN / Wi-Fi
+        - Different networks
+        - VPN involved
+        - Mobile data involved
+        - Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: "1. Open... 2. Pair... 3. Send..."
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Sanitized logs / screenshots
+      description: Remove secrets and private data before posting.
