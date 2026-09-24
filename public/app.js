@@ -710,12 +710,11 @@
     renderTransfer();
   }
   function progress(bytes,total,started,label){
-    const now=performance.now();
+    const now=performance.now(),interval=tuning.uiIntervalMs||100;
+    if(lastProgressRenderAt&&now-lastProgressRenderAt<interval&&bytes<total)return;
     els.progress.value=total?Math.min(100,bytes/total*100):100;
     progressState=BlinkProtocol.updateTransferEstimate(progressState,{bytes,total,started,label,now});
-    if(!lastProgressRenderAt||now-lastProgressRenderAt>=(tuning.uiIntervalMs||100)||bytes>=total){
-      lastProgressRenderAt=now;renderTransfer();
-    }
+    lastProgressRenderAt=now;renderTransfer();
   }
   function stopTransfer(message, notify = true, preserveQueue = false, vars = {}) {
     active?.flowWake?.();
@@ -852,21 +851,30 @@
     outgoing.push(...normalized);batchTotal=batchDone+(active?1:0)+outgoing.length;renderQueue();if(!active)sendNext();
   }
   function enqueueFiles(files) { enqueueEntries([...files].map(file => ({ file, relativePath:file.webkitRelativePath || '' }))); }
-  async function waitForSendCapacity(limit,nextBytes=0){
-    while(channel?.readyState==='open'){
-      const bufferBlocked=channel.bufferedAmount>limit;
-      const flowBlocked=active?.direction==='send'&&active.accepted&&active.remoteWindow>0&&
-        (active.sent-(active.remoteReceived||0)+Math.max(0,nextBytes))>active.remoteWindow;
-      if(!bufferBlocked&&!flowBlocked)break;
-      await new Promise(resolve=>{
-        let timer;
-        const done=()=>{clearTimeout(timer);channel?.removeEventListener?.('bufferedamountlow',done);if(active?.flowWake===done)active.flowWake=null;resolve();};
-        channel.addEventListener('bufferedamountlow',done,{once:true});
-        if(active?.direction==='send')active.flowWake=done;
-        timer=setTimeout(done,100);
-      });
-    }
-    if(channel?.readyState!=='open')throw new Error('Connection closed');
+  function sendCapacityBlocked(limit,nextBytes=0){
+    if(channel?.readyState!=='open')return true;
+    if(channel.bufferedAmount>limit)return true;
+    return !!(active?.direction==='send'&&active.accepted&&active.remoteWindow>0&&
+      (active.sent-(active.remoteReceived||0)+Math.max(0,nextBytes))>active.remoteWindow);
+  }
+  function waitForSendCapacity(limit,nextBytes=0){
+    if(!sendCapacityBlocked(limit,nextBytes))return null;
+    return (async()=>{
+      while(channel?.readyState==='open'&&sendCapacityBlocked(limit,nextBytes)){
+        await new Promise(resolve=>{
+          let timer;
+          const done=()=>{clearTimeout(timer);channel?.removeEventListener?.('bufferedamountlow',done);if(active?.flowWake===done)active.flowWake=null;resolve();};
+          channel.addEventListener('bufferedamountlow',done,{once:true});
+          if(active?.direction==='send')active.flowWake=done;
+          timer=setTimeout(done,50);
+        });
+      }
+      if(channel?.readyState!=='open')throw new Error('Connection closed');
+    })();
+  }
+  async function respectSendCapacity(limit,nextBytes=0){
+    const wait=waitForSendCapacity(limit,nextBytes);
+    if(wait)await wait;
   }
   function sendFlowUpdate(state=active,force=false){
     if(!state||state.direction!=='receive'||channel?.readyState!=='open')return;
@@ -920,13 +928,13 @@
         while(active?.id===id&&!active.paused&&active.rangeIndex<active.sendRanges.length){
           const range=active.sendRanges[active.rangeIndex];
           if(active.rangeSeq>range[1]){active.rangeIndex++;active.rangeSeq=active.sendRanges[active.rangeIndex]?.[0]??0;continue;}
-          await waitForSendCapacity(active.highWater||tuning.highWater,0);
+          await respectSendCapacity(active.highWater||tuning.highWater,0);
           const firstSeq=active.rangeSeq,rangeEndSeq=range[1]+1,maxSeq=Math.min(rangeEndSeq,firstSeq+Math.max(1,Math.floor(readAhead/size)));
           const start=firstSeq*size,end=Math.min(file.size,maxSeq*size),buffer=await file.slice(start,end).arrayBuffer(),view=new Uint8Array(buffer);
           let local=0,seq=firstSeq;
           while(local<view.byteLength&&seq<maxSeq){
             if(active?.id!==id||active.paused)return;
-            const len=Math.min(size,view.byteLength-local);await waitForSendCapacity(active.highWater||tuning.highWater,len);
+            const len=Math.min(size,view.byteLength-local);await respectSendCapacity(active.highWater||tuning.highWater,len);
             const payload=view.subarray(local,local+len);
             channel.send(BlinkTransfer.packChunk(seq,payload));
             active.rangeSeq=++seq;active.sent=Math.min(file.size,active.sent+len);local+=len;
@@ -940,12 +948,12 @@
         }return;
       }
       while(active?.id===id&&!active.paused&&active.sent<file.size){
-        await waitForSendCapacity(active.highWater||tuning.highWater,0);
+        await respectSendCapacity(active.highWater||tuning.highWater,0);
         const readStart=active.sent,readEnd=Math.min(file.size,readStart+readAhead),buffer=await file.slice(readStart,readEnd).arrayBuffer(),view=new Uint8Array(buffer);
         let local=0;
         while(local<view.byteLength){
           if(active?.id!==id||active.paused)return;
-          const seq=active.nextChunk,len=Math.min(size,view.byteLength-local);await waitForSendCapacity(active.highWater||tuning.highWater,len);const payload=view.subarray(local,local+len);
+          const seq=active.nextChunk,len=Math.min(size,view.byteLength-local);await respectSendCapacity(active.highWater||tuning.highWater,len);const payload=view.subarray(local,local+len);
           channel.send(BlinkTransfer.packChunk(seq,payload));
           active.sent+=len;active.nextChunk++;local+=len;
           progress(active.sent,file.size,active.started,'sending');
