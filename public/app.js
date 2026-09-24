@@ -763,24 +763,32 @@
   async function runBenchmark(){
     if(channel?.readyState!=='open'||active||benchmarkState||mode!=='send')return;
     const id=crypto.randomUUID(),bytes=8*1024*1024;
-    benchmarkState={id,bytes,started:0,resolve:null};
-    const done=new Promise(resolve=>benchmarkState.resolve=resolve);
+    const state={id,bytes,started:0,resolve:null,cancelled:false};
+    benchmarkState=state;
+    const done=new Promise(resolve=>state.resolve=resolve);
     channel.send(JSON.stringify({type:'benchmark-start',id,bytes}));
-    const timeout=setTimeout(()=>benchmarkState?.resolve?.(0),12000);
+    const timeout=setTimeout(()=>{if(benchmarkState===state){state.cancelled=true;state.resolve?.(0);}},12000);
     const throughput=await done;clearTimeout(timeout);
+    if(benchmarkState===state)benchmarkState=null;
+    state.cancelled=true;
     if(throughput>0)connectionMetrics.throughputBps=throughput;
-    retuneConnection();
-    benchmarkState=null;updateQualityLabel();updateDiagnostics();
+    retuneConnection();updateQualityLabel();updateDiagnostics();
   }
   async function sendBenchmarkPayload(){
-    if(!benchmarkState||channel?.readyState!=='open')return;
-    benchmarkState.started=performance.now();
-    const block=new Uint8Array(64*1024),count=Math.ceil(benchmarkState.bytes/block.byteLength);
+    const state=benchmarkState;
+    if(!state||channel?.readyState!=='open')return;
+    state.started=performance.now();
+    const block=new Uint8Array(64*1024),count=Math.ceil(state.bytes/block.byteLength),limit=4*1024*1024;
     for(let i=0;i<count;i++){
-      while(channel.bufferedAmount>8*1024*1024)await new Promise(r=>channel.addEventListener('bufferedamountlow',r,{once:true}));
+      if(benchmarkState!==state||state.cancelled||channel?.readyState!=='open')return;
+      while(channel.bufferedAmount>limit){
+        if(benchmarkState!==state||state.cancelled||channel?.readyState!=='open')return;
+        await new Promise(resolve=>setTimeout(resolve,4));
+      }
       channel.send(block);
     }
-    channel.send(JSON.stringify({type:'benchmark-end',id:benchmarkState.id,bytes:benchmarkState.bytes}));
+    if(benchmarkState===state&&!state.cancelled&&channel?.readyState==='open')
+      channel.send(JSON.stringify({type:'benchmark-end',id:state.id,bytes:state.bytes}));
   }
   function maybeFinishVerification() {
     if(!localVerified||!remoteVerified||peerVerified)return;
@@ -973,7 +981,7 @@
     if(msg.type==='benchmark-start'&&typeof msg.id==='string'){benchmarkIncoming=msg.id;channel.send(JSON.stringify({type:'benchmark-ready',id:msg.id}));return;}
     if(msg.type==='benchmark-ready'&&benchmarkState?.id===msg.id){sendBenchmarkPayload();return;}
     if(msg.type==='benchmark-end'&&benchmarkIncoming===msg.id){benchmarkIncoming='';channel.send(JSON.stringify({type:'benchmark-ack',id:msg.id,bytes:msg.bytes}));return;}
-    if(msg.type==='benchmark-ack'&&benchmarkState?.id===msg.id&&benchmarkState.started){const seconds=Math.max(.001,(performance.now()-benchmarkState.started)/1000);benchmarkState.resolve?.((Number(msg.bytes)||benchmarkState.bytes)/seconds);return;}
+    if(msg.type==='benchmark-ack'&&benchmarkState?.id===msg.id&&benchmarkState.started&&!benchmarkState.cancelled){const seconds=Math.max(.001,(performance.now()-benchmarkState.started)/1000);benchmarkState.resolve?.((Number(msg.bytes)||benchmarkState.bytes)/seconds);return;}
     if (msg.type === 'hello') { peerName=sanitizeDeviceName(msg.name); els['peer-name'].textContent=peerName; rememberPeerName(peerName); updateDiagnostics(); return; }
     if (msg.type === 'batch-request') {
       if (active || pending || !BlinkSecurity.validBatchRequest(msg)) return;
