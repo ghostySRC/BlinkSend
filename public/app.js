@@ -993,7 +993,11 @@
     let msg; try { msg = JSON.parse(raw); } catch { return; }
     if(!BlinkControlPolicy.allowed(msg?.type,peerVerified))return;
     if(msg.type==='benchmark-start'&&typeof msg.id==='string'){benchmarkIncoming=msg.id;channel.send(JSON.stringify({type:'benchmark-ready',id:msg.id}));return;}
-    if(msg.type==='benchmark-ready'&&benchmarkState?.id===msg.id){sendBenchmarkPayload();return;}
+    if(msg.type==='benchmark-ready'&&benchmarkState?.id===msg.id){
+      try{await sendBenchmarkPayload();}
+      catch{if(benchmarkState?.id===msg.id){benchmarkState.cancelled=true;benchmarkState.resolve?.(0);}}
+      return;
+    }
     if(msg.type==='benchmark-end'&&benchmarkIncoming===msg.id){benchmarkIncoming='';channel.send(JSON.stringify({type:'benchmark-ack',id:msg.id,bytes:msg.bytes}));return;}
     if(msg.type==='benchmark-ack'&&benchmarkState?.id===msg.id&&benchmarkState.started&&!benchmarkState.cancelled){const seconds=Math.max(.001,(performance.now()-benchmarkState.started)/1000);benchmarkState.resolve?.((Number(msg.bytes)||benchmarkState.bytes)/seconds);return;}
     if (msg.type === 'hello') { peerName=sanitizeDeviceName(msg.name); els['peer-name'].textContent=peerName; rememberPeerName(peerName); updateDiagnostics(); return; }
