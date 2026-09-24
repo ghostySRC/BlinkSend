@@ -6,8 +6,7 @@
     const chunkCap=Math.min(256*KiB,negotiated);
     let preferred=weak?64*KiB:throughputBps>=24*MiB?256*KiB:throughputBps>=6*MiB?192*KiB:128*KiB;
     if(!throughputBps&&!weak)preferred=128*KiB;
-    const candidates=[256*KiB,192*KiB,128*KiB,64*KiB,32*KiB];
-    const chunkSize=candidates.find(size=>size<=Math.min(preferred,chunkCap))||32*KiB;
+    const chunkSize=Math.max(16*KiB,Math.min(preferred,chunkCap));
     let highWater=weak?8*MiB:16*MiB;
     if(throughputBps>20*MiB&&!weak)highWater=24*MiB;
     if(throughputBps>50*MiB&&!weak&&rttMs<100)highWater=32*MiB;
