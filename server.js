@@ -79,9 +79,13 @@ function issueIceToken(ip) {
   iceTokens.set(token, { ip, expires: Date.now() + 120_000, uses: 2 });
   return token;
 }
-function consumeIceToken(token, ip) {
+function consumeIceToken(token) {
   const item = iceTokens.get(token);
-  if (!item || item.ip !== ip || item.expires < Date.now() || item.uses <= 0) { if (item) iceTokens.delete(token); return false; }
+  // The token is already a short-lived, high-entropy bearer credential. Do not
+  // bind it to the request IP: Railway/proxy connection reuse, mobile network
+  // changes, and privacy relays can legitimately change the apparent IP between
+  // the WebSocket join and the follow-up /ice request.
+  if (!item || item.expires < Date.now() || item.uses <= 0) { if (item) iceTokens.delete(token); return false; }
   item.uses--; if (!item.uses) iceTokens.delete(token); return true;
 }
 function validSignal(type, payload) {
@@ -153,7 +157,7 @@ const server = http.createServer(async (req, res) => {
       const ip = clientIp(req);
       if (!allowed(`ice:${ip}`, 30, 60_000)) { res.writeHead(429, securityHeaders({ 'Retry-After': '60', 'Cache-Control': 'no-store' })).end(); return; }
       const token = new URL(req.url, 'http://localhost').searchParams.get('token') || '';
-      if (!consumeIceToken(token, ip)) { res.writeHead(403, securityHeaders({ 'Cache-Control': 'no-store' })).end(); return; }
+      if (!consumeIceToken(token)) { res.writeHead(403, securityHeaders({ 'Cache-Control': 'no-store' })).end(); return; }
       res.writeHead(200, securityHeaders({ 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }));
       counters.iceCredentialsIssued++;res.end(JSON.stringify({ iceServers: iceServers() })); return;
     }
